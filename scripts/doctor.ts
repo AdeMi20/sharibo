@@ -43,24 +43,46 @@ async function checkRust(): Promise<Check> {
   const rustc = await run("rustc", ["--version"]);
   const target = await run("rustup", ["target", "list", "--installed"]);
   const hasTarget = target.includes("wasm32v1-none");
-  const required = "rustc >= 1.56.0 + wasm32v1-none target";
+  
+  let toolchainChannel = "1.94.1";
+  try {
+    const toolchainContent = readFileSync(path.join(__dirname, "../rust-toolchain.toml"), "utf8");
+    const match = toolchainContent.match(/channel\s*=\s*"([^"]+)"/);
+    if (match && match[1]) {
+      toolchainChannel = match[1];
+    }
+  } catch (e) {
+    // fallback if file doesn't exist
+  }
+
+  const requiredMsg = `rustc == ${toolchainChannel} (pinned in rust-toolchain.toml) + wasm32v1-none target`;
+
   if (rustc.startsWith("rustc ")) {
     const version = rustc.split(" ")[1];
-    const ok = hasTarget && semverCompare(version, "1.56.0") >= 0;
+    const ok = hasTarget && version === toolchainChannel;
+    let fixStr = undefined;
+    if (!hasTarget && version !== toolchainChannel) {
+      fixStr = `Run: rustup install ${toolchainChannel} && rustup target add wasm32v1-none`;
+    } else if (!hasTarget) {
+      fixStr = "Run: rustup target add wasm32v1-none";
+    } else if (version !== toolchainChannel) {
+      fixStr = `Install the correct Rust version: rustup default ${toolchainChannel} (or ensure rust-toolchain.toml is picked up)`;
+    }
+
     return {
       name: "Rust + wasm32v1-none",
       ok,
       found: `${rustc} | target installed: ${hasTarget}`,
-      required,
-      install: "rustup install stable && rustup target add wasm32v1-none",
-      fix: hasTarget ? undefined : "Run: rustup target add wasm32v1-none",
+      required: requiredMsg,
+      install: `rustup install ${toolchainChannel} && rustup target add wasm32v1-none`,
+      fix: fixStr,
     };
   }
   return {
     name: "Rust + wasm32v1-none",
     ok: false,
     found: "missing",
-    required,
+    required: requiredMsg,
     install: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh && rustup target add wasm32v1-none",
   };
 }

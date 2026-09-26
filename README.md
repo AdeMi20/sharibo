@@ -209,7 +209,7 @@ Fresh-machine steps, in order. Everything below targets **Stellar testnet only**
 
 | Tool | Minimum | Tested |
 |---|---|---|
-| [Rust](https://rustup.rs/) + `wasm32v1-none` target | rustc **1.56.0** (edition 2021) | `rustc 1.92.0` |
+| [Rust](https://rustup.rs/) + `wasm32v1-none` target | rustc **1.94.1** (pinned in rust-toolchain.toml) | `rustc 1.94.1` |
 | [`stellar` CLI](https://developers.stellar.org/docs/tools/cli/install-cli) | **v21.0** (protocol 22 required for BLS12-381 host functions; protocol 23 for `soroban-sdk = "23"`) | `23.4.1` |
 | [Node.js](https://nodejs.org/) | **20.6.0** (`process.loadEnvFile`, used in `scripts/e2e.ts`) | `v24.11.1` |
 | [`circom`](https://docs.circom.io/getting-started/installation/) on `PATH` | **2.1.6** (pragma in `circuits/membership.template.circom`) | `2.2.3` (built from source) |

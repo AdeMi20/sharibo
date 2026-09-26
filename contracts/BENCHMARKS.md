@@ -81,7 +81,7 @@ This table is refreshed by the benchmark test:
 just bench-contract
 ```
 
-The committed values are generated from the current Soroban SDK and should be
+The committed values are generated from the current Soroban SDK on **rustc 1.94.1**, and should be
 reviewed whenever contract logic or dependencies change.
 
 | Entrypoint | CPU instructions | Budget headroom |
