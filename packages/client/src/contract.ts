@@ -61,25 +61,11 @@ export interface ResolvedSigner {
   signAuthEntry: any;
 }
 
-export interface ResolvedSigner {
-  publicKey: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  signTransaction: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  signAuthEntry: any;
-}
-
 /**
  * Turns a keypair or a wallet signer into the pieces the contract client
  * needs, without constructing the client. Shared by `connect` and the SDK
  * facade so both agree on who the signer is.
  */
-export interface FeeEstimate {
-  /** Minimum resource fee in stroops, as reported by simulation. */
-  minResourceFee: bigint;
-  /** Total fee (base + resource) encoded in the assembled transaction, in stroops. */
-  totalFee: bigint;
-}
 
 export function resolveSigner(
   keypairOrSigner: Keypair | ShariboSigner,
@@ -227,6 +213,16 @@ function populateTxResult<T>(
     ledger: sent.getTransactionResponse?.ledger,
     feeCharged: sent.getTransactionResponse?.feeCharged,
   };
+}
+
+/**
+ * An estimate of the transaction fee costs for an operation.
+ */
+export interface FeeEstimate {
+  /** Minimum resource fee in stroops, as reported by simulation. */
+  minResourceFee: bigint;
+  /** Total fee (base + resource) encoded in the assembled transaction, in stroops. */
+  totalFee: bigint;
 }
 
 /**
