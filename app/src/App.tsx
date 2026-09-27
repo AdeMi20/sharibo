@@ -30,23 +30,10 @@ import {
   type ContractProof,
   type CircleId,
   makeCircleId,
-  ContractError,
-  CircleNotFoundError,
-  RoundNotFundedError,
-  WrongRoundTagError,
-  AlreadyClaimedError,
-  InvalidProofError,
-  RoundFullError,
-  OverflowError,
-  CircleCancelledError,
-  RpcError,
-  ProvingError,
-  InvalidInputError,
-  describeError,
   networkOf,
 } from "@sharibo/client";
 import { config, configError } from "./config";
-import { useI18n } from "./i18n";
+import { LanguageSwitcher, useI18n } from "./i18n";
 import { usePoliteLiveRegion } from "./usePoliteLiveRegion";
 import { ArtifactProgress } from "./components/ArtifactProgress.js";
 import { explorerTx, short, explorerAccount, explorerContract } from "./lib/explorer";
@@ -55,30 +42,19 @@ import { MemberRingSkeleton } from "./components/MemberRing";
 import { FundingListSkeleton } from "./components/FundingList";
 import {
   friendbotFund as fundWithFriendbot,
-  FriendbotRetryableError,
-  FRIEND_BOT_RATE_LIMIT_MESSAGE,
 } from "./lib/friendbot";
 import styles from "./App.module.css";
 import { checkNetworkMatch } from "./lib/wallet.freighter";
 import { Toaster } from "./components/Toaster";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { useOnlineStatus } from "./hooks/useOnlineStatus";
-import { diagnose, type Failure } from "./state/circleMachine";
+import { toUiError, type Failure } from "./state/circleMachine";
 import { copyDebugBundle, type BundleInput } from "./lib/debugBundle";
+import { clearSession, loadSession, saveSession } from "./lib/session.js";
 
-const BIGINT_MARKER = 'BIGINT::';
-function replacer(key: string, value: unknown): unknown {
-  if (typeof value === 'bigint') {
-    return BIGINT_MARKER + value.toString();
-  }
-  return value;
-}
-
-function reviver(key: string, value: unknown): unknown {
-  if (typeof value === 'string' && value.startsWith(BIGINT_MARKER)) {
-    return BigInt(value.slice(BIGINT_MARKER.length));
-  }
-  return value;
+function formatError(error: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
+  const mapped = toUiError(error);
+  return t(mapped.key, mapped.vars);
 }
 
 // `config` is null when config validation failed (see config.ts); the component
@@ -111,25 +87,6 @@ function TestnetBanner() {
   );
 }
 
-function LanguageSwitcher({ className = "" }: { className?: string }) {
-  const { locale, locales, setLocale } = useI18n();
-  return (
-    <div className={`language-switcher ${className}`}>
-      <select
-        value={locale}
-        onChange={(e) => setLocale(e.target.value)}
-        aria-label="Language"
-      >
-        {locales.map((code) => (
-          <option key={code} value={code}>
-            {code}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
 const NAMES = [
   "ajo",
   "esusu",
@@ -144,70 +101,6 @@ const NAMES = [
   "paluwagan",
   "chit fund",
 ];
-
-function toUiError(error: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
-  if (error instanceof FriendbotRetryableError) {
-    return FRIEND_BOT_RATE_LIMIT_MESSAGE;
-  }
-
-  // Typed contract-error subclasses — no XDR string matching needed.
-  if (error instanceof AlreadyClaimedError) {
-    return "This proof has already been claimed in this circle. Try the next round.";
-  }
-  if (error instanceof InvalidProofError) {
-    return "The zero-knowledge proof is invalid. Please regenerate and try again.";
-  }
-  if (error instanceof RoundNotFundedError) {
-    return "The circle is not fully funded yet. All members must contribute first.";
-  }
-  if (error instanceof WrongRoundTagError) {
-    return "Proof is bound to a different round. Regenerate the proof for the current round.";
-  }
-  if (error instanceof CircleNotFoundError) {
-    return "Circle not found on-chain. It may have been cancelled or never created.";
-  }
-  if (error instanceof RoundFullError) {
-    return "This round is already fully funded. No more contributions are accepted.";
-  }
-  if (error instanceof OverflowError) {
-    return "Contribution amount or circle size caused an arithmetic overflow.";
-  }
-  if (error instanceof CircleCancelledError) {
-    return "This circle has been cancelled. Start a new one.";
-  }
-
-  if (error instanceof ContractError) {
-    return error.message;
-  }
-  if (error instanceof RpcError) {
-    return "Network error — please check your connection and retry.";
-  }
-  if (error instanceof ProvingError) {
-    return "Proof generation failed. Please try again.";
-  }
-  if (error instanceof InvalidInputError) {
-    return error.message;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return t("error.generic");
-}
-
-// Same shape as toUiError, but additionally recognizes Sharibo contract
-// rejections — the raw `Error(Contract, #4)` Soroban surfaces gets rendered
-// as "AlreadyClaimed: this proof's nullifier was already used; ..." via
-// describeError() (packages/client/src/errors.ts) instead of the bare error
-// code. Falls back to the same Friendbot special-case and raw-message
-// behavior as toUiError for anything that isn't a recognized contract error.
-function getErrorMessage(error: unknown): string {
-  if (error instanceof FriendbotRetryableError) {
-    return FRIEND_BOT_RATE_LIMIT_MESSAGE;
-  }
-  return describeError(error);
-}
 
 
 // Every truncated value on screen (addresses, tx hashes) needs to be
@@ -693,16 +586,9 @@ export default function App() {
   const [resumePrompt, setResumePrompt] = useState<any>(null);
 
   useEffect(() => {
-    const saved = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("sharibo_demo_state") : null;
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved, reviver);
-        if (parsed && parsed.circleId) {
-          setResumePrompt(parsed);
-        }
-      } catch {
-        sessionStorage.removeItem("sharibo_demo_state");
-      }
+    const result = loadSession();
+    if (result.ok && result.value.circleId) {
+      setResumePrompt(result.value);
     }
   }, []);
 
@@ -845,7 +731,7 @@ export default function App() {
         if (!mounted) return;
         setMembers((prev) => prev.map((m, i) => ({ ...m, ineligible: results[i], ineligibleReason: results[i] ? "Already claimed in this circle" : undefined })));
       } catch (e) {
-        setError(toUiError(e, t));
+        setError(formatError(e, t));
       } finally {
         if (mounted) setBusy(null);
       }
@@ -882,7 +768,7 @@ export default function App() {
     claimAbortRef.current = null;
 
     setPreviousCircleId(circleId);
-    sessionStorage.removeItem("sharibo_demo_state");
+    clearSession();
 
     setBusy(null);
     setError(null);
@@ -1003,8 +889,24 @@ export default function App() {
       setFeeRecipient("");
       setScreen("circle");
       setCirclePhase("ready");
+      saveSession({
+        contributionXlm,
+        adminSecret: adminKp.secret(),
+        members: newMembers.map((member) => ({
+          secret: member.keypair.secret(),
+          identity: member.identity,
+          fundHash: member.fundHash,
+        })),
+        circleId: makeCircleId(newCircleId),
+        round: 0,
+        claimantIndex: 0,
+        proof: null,
+        nullifierHash: null,
+        claimResult: null,
+        rejection: null,
+      });
     } catch (e) {
-      setError(toUiError(e, t));
+      setError(formatError(e, t));
       setCirclePhase("error");
     } finally {
       setBusy(null);
@@ -1052,7 +954,7 @@ export default function App() {
           idx === i ? { ...mm, pending: false } : mm,
         ),
       );
-      setError(toUiError(e, t));
+      setError(formatError(e, t));
     } finally {
       setBusy(null);
     }
@@ -1139,7 +1041,7 @@ export default function App() {
           idx === i ? { ...mm, pending: false } : mm,
         ),
       );
-      setError(getErrorMessage(e));
+      setError(formatError(e, t));
     } finally {
       setBusy(null);
     }
@@ -1240,7 +1142,7 @@ export default function App() {
       // Sync with on-chain state after claim
       await syncFundingState();
     } catch (e) {
-      setError(toUiError(e, t));
+      setError(formatError(e, t));
     } finally {
       if (!signal.aborted) {
         setBusy(null);
@@ -1286,7 +1188,7 @@ export default function App() {
       });
       setRejection(t("rejection.unexpected"));
     } catch (e) {
-      setRejection(toUiError(e, t));
+      setRejection(formatError(e, t));
     } finally {
       // Reflect the on-chain state either way: the re-funding above happened
       // for real even though the replayed claim itself was rejected.
@@ -1321,7 +1223,7 @@ export default function App() {
       // Sync with on-chain state after cancellation
       await syncFundingState();
     } catch (e) {
-      setError(toUiError(e, t));
+      setError(formatError(e, t));
     } finally {
       setBusy(null);
     }
@@ -1340,7 +1242,7 @@ export default function App() {
               Resume Circle
             </button>
             <button className={`${styles.btn} ${styles.btnDanger}`} onClick={() => {
-              sessionStorage.removeItem("sharibo_demo_state");
+              clearSession();
               setResumePrompt(null);
             }}>
               {t("resume.discardButton")}
