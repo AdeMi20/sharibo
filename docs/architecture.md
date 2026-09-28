@@ -11,8 +11,7 @@ This is the detailed version of the [Repository structure](../README.md#reposito
 | [**`contracts/`**](../contracts/README.md) | Soroban contract that verifies Groth16 proofs on-chain | Rust, soroban-sdk 23, `wasm32v1-none` | `cd contracts && cargo test` | `contracts` |
 | [**`circuits/`**](../circuits/README.md) | Zero-knowledge membership circuit + trusted-setup pipeline | Circom 2.2.3, snarkjs, bash | `cd circuits && npm test` | `circuits` |
 | [**`scripts/`**](../scripts/package.json) | Node/TS helpers: e2e round runner, smoke health check | TypeScript, tsx | `npm test -w scripts` | `e2e` / `dx` |
-| [**`docs/`**](index.md) | Long-form documentation (this file included) | Markdown | — | `documentation` |
-| [**`judges/`**](../judges/VERIFY.md) | Judge-facing proof-of-real verification guide | Markdown | — | `documentation` |
+| [**`docs/`**](index.md) | Long-form documentation (this file included); `docs/hackathon/` is a point-in-time archive | Markdown | — | `documentation` |
 | [**`test-vectors/`**](../test-vectors/generate.mjs) | Cross-implementation Poseidon fixture vectors | JSON, Node | exercised by client/circuit suites | `testing` |
 
 ## End-to-end data flow
@@ -44,7 +43,7 @@ These are non-negotiable across all the directories touched by a change — see 
 - **Commitment:** `leaf = Poseidon(identityNullifier, identitySecret)`.
 - **Nullifier:** `nullifierHash = Poseidon(identityNullifier, externalNullifier)`.
 - **Round tag:** `externalNullifier = SHA256(circle_id, round) mod r`, computed outside the circuit.
-- **Public signal order:** `[nullifierHash, root, externalNullifier, recipientHash]` — circuit, contract, and client must all agree ([wire-format.md](wire-format.md)).
+- **Public signal order:** `[nullifierHash, root, externalNullifier, recipientHash]` — circuit, contract, and client must all agree ([wire-format.md](wire-format.md); manifest: [`test-vectors/public-signals.json`](../test-vectors/public-signals.json)).
 
 ## Where to dig deeper
 

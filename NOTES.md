@@ -33,9 +33,9 @@ Running log of decisions, deviations from the build spec, and `// DEMO MOCK:` it
 
 ## Deviations from spec
 
-> **Superseded (public signal order):** The circuit now exposes **four** public signals including `recipientHash` (#266). Authoritative order: [docs/wire-format.md](docs/wire-format.md). The three-signal note below is historical.
+> **Superseded note:** Authoritative order lives in [docs/wire-format.md](docs/wire-format.md). The discovery narrative below records how the order was found; the live invariant is four signals including `recipientHash`.
 
-- **Public signal order (§7) is `[nullifierHash, root, externalNullifier]`, not `[root, externalNullifier, nullifierHash]`.**
+- **Public signal order (§7) is `[nullifierHash, root, externalNullifier, recipientHash]`, not `[root, externalNullifier, nullifierHash]`.**
   Verified empirically: `circuits/build/public.json` after `scripts/prove.sh` puts the circuit's public _output_ (`nullifierHash`) first, then the public _inputs_ in the order listed in `component main {public [root, externalNullifier]}`. This is standard circom/snarkjs behavior — all outputs of the main component are implicitly public and are emitted before the explicitly-annotated public inputs, regardless of declaration order in the source. The spec's assumed order was aspirational, not real. **This is the order that must be used everywhere** (contract's `claim` verification, client proof formatting) per the same cross-cutting-invariant principle in §7 — I'm treating "byte-for-byte agreement across circuit/contract/client" as the actual invariant and `[root, externalNullifier, nullifierHash]` as the part that was wrong.
 - No reference `membership.circom` / `ronda_contract.rs` files were present anywhere in the environment (searched home directory) despite the spec's phrasing ("a complete reference implementation... is provided"). Implemented `MerkleTreeChecker` from the well-known Tornado Cash / Semaphore pattern instead of copying a provided file.
 

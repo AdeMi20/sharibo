@@ -26,6 +26,9 @@ import {
   TREE_LEVELS,
   xlmToStroops,
   formatXlm,
+  formatXlmDisplay,
+  POLL_RETRY_POLICY,
+  PATIENT_RETRY_POLICY,
   type Identity,
   type ContractProof,
   type CircleId,
@@ -63,8 +66,10 @@ import { checkNetworkMatch } from "./lib/wallet.freighter";
 import { Toaster } from "./components/Toaster";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { useOnlineStatus } from "./hooks/useOnlineStatus";
+import { useSdkEvents } from "./hooks/useSdkEvents";
 import { diagnose, type Failure } from "./state/circleMachine";
 import { copyDebugBundle, type BundleInput } from "./lib/debugBundle";
+import type { LoggedSdkEvent } from "./lib/sdkEventLog";
 
 const BIGINT_MARKER = 'BIGINT::';
 function replacer(key: string, value: unknown): unknown {
@@ -275,6 +280,7 @@ function CopyDebugBundleButton({
   circleSize,
   pot,
   timings,
+  recentEvents,
 }: {
   circleId: bigint | null;
   round: number;
@@ -284,6 +290,7 @@ function CopyDebugBundleButton({
   circleSize: number;
   pot: bigint;
   timings: Record<string, number>;
+  recentEvents: LoggedSdkEvent[];
 }) {
   const [status, setStatus] = useState<"idle" | "copied" | "fallback" | "error">("idle");
 
@@ -313,6 +320,7 @@ function CopyDebugBundleButton({
       // than leave undefined — the bundle accepts an empty record.
       artifactHashes: {},
       timings,
+      recentEvents,
       userAgent: navigator.userAgent,
     };
 
@@ -575,7 +583,7 @@ function EnvSetupScreen({ errors }: { errors: string[] }) {
         <p className={styles.sub}>
           {t("env.setupIntro")} {t("env.setupHowTo")}
         </p>
-        <ul style={{ textAlign: "left", margin: "1rem 0", padding: "0 1.25rem" }}>
+        <ul style={{ textAlign: "start", margin: "1rem 0", padding: "0 1.25rem" }}>
           {errors.map((err) => (
             <li key={err} style={{ marginBottom: "0.5rem" }}>
               <code>{err}</code>
@@ -644,8 +652,16 @@ function ClaimExplainer() {
 // ── Root component ───────────────────────────────────────────────────────────
 
 export default function App() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const online = useOnlineStatus();
+  const {
+    onEvent,
+    claimStage,
+    setClaimStage,
+    clearEvents,
+    resetClaimStage,
+    recentEvents,
+  } = useSdkEvents();
   const [failure, setFailure] = useState<Failure | null>(null);
 
   if (configError.length > 0) {
@@ -656,7 +672,6 @@ export default function App() {
   const [circlePhase, setCirclePhase] = useState<CirclePhase>("idle");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [events, setEvents] = useState<any[]>([]);
 
   const [contributionXlm, setContributionXlm] = useState(10);
   const [admin, setAdmin] = useState<Keypair | null>(null);
@@ -682,7 +697,6 @@ export default function App() {
   const [provingElapsedMs, setProvingElapsedMs] = useState<number | null>(null);
   const [nullifierClaimed, setNullifierClaimed] = useState(false);
   const [rejection, setRejection] = useState<string | null>(null);
-  const [claimStage, setClaimStage] = useState<ClaimStage | null>(null);
   const [proveElapsedSeconds, setProveElapsedSeconds] = useState(0);
   // Step timings (ms) collected during doClaim for the debug bundle.
   const [stepTimings, setStepTimings] = useState<Record<string, number>>({});
@@ -732,8 +746,8 @@ export default function App() {
     try {
       const { connect, getCircle } = await import("@sharibo/client");
       const adminClient = await connect(NETWORK, admin);
-      const circle = await getCircle(adminClient, circleId);
-      
+      const circle = await getCircle(adminClient, circleId, POLL_RETRY_POLICY);
+
       setPot(circle.pot);
       setOnChainContributors(circle.contributors);
       setCancelled(circle.cancelled);
@@ -904,7 +918,8 @@ export default function App() {
     setProvingElapsedMs(null);
     setNullifierClaimed(false);
     setRejection(null);
-    setClaimStage(null);
+    resetClaimStage();
+    clearEvents();
     setProveElapsedSeconds(0);
     setScreen("landing");
   }
@@ -981,7 +996,7 @@ export default function App() {
         r.json(),
       );
       const vk = verificationKeyToContractFormat(vkJson);
-      const adminClient = await connect({ ...NETWORK, onEvent: (e) => setEvents(prev => [...prev, e]) }, adminKp);
+      const adminClient = await connect({ ...NETWORK, onEvent }, adminKp);
       const { result: newCircleId } = await createCircle(adminClient, {
         admin: adminKp.publicKey(),
         token: TOKEN,
@@ -1171,6 +1186,7 @@ export default function App() {
 
       if (signal.aborted) return;
       setClaimStage("artifacts");
+      onEvent({ type: "artifact:started" });
       const [wasm, zkey, vkJson] = await Promise.all([
         fetch("/circuits/membership.wasm")
           .then((r) => r.arrayBuffer())
@@ -1180,9 +1196,13 @@ export default function App() {
           .then((b) => new Uint8Array(b)),
         fetch("/circuits/verification_key.json").then((r) => r.json()),
       ]);
+      onEvent({
+        type: "artifact:ready",
+        loaded: wasm.byteLength + zkey.byteLength,
+        total: wasm.byteLength + zkey.byteLength,
+      });
 
       if (signal.aborted) return;
-      setClaimStage("proving");
       setProveElapsedSeconds(0);
       const proveTimer = setInterval(() => setProveElapsedSeconds((s) => s + 1), 1000);
       let generated;
@@ -1198,13 +1218,13 @@ export default function App() {
           },
           wasm,
           zkey,
-          { signal, onEvent: (e) => setEvents((prev) => [...prev, e]) },
+          { signal, onEvent },
         );
       } finally {
         clearInterval(proveTimer);
       }
 
-      setClaimStage("verifying");
+      // proof:finished already set claimStage to "verifying"
       const verifyTimeMs = await verifyProofLocally(
         vkJson,
         generated.publicSignals,
@@ -1218,13 +1238,17 @@ export default function App() {
       if (signal.aborted) return;
       setClaimStage("submitting");
       const adminClient = await connect({ ...NETWORK, onEvent: (e) => setEvents(prev => [...prev, e]) }, admin);
-      const { hash } = await claim(adminClient, {
-        circleId,
-        recipient: recipient.publicKey(),
-        nullifierHash: generated.nullifierHash,
-        externalNullifier: generated.externalNullifier,
-        proof: generated.proof,
-      });
+      const { hash } = await claim(
+        adminClient,
+        {
+          circleId,
+          recipient: recipient.publicKey(),
+          nullifierHash: generated.nullifierHash,
+          externalNullifier: generated.externalNullifier,
+          proof: generated.proof,
+        },
+        PATIENT_RETRY_POLICY,
+      );
 
       if (signal.aborted) return;
       setProof(generated.proof);
@@ -1244,7 +1268,7 @@ export default function App() {
     } finally {
       if (!signal.aborted) {
         setBusy(null);
-        setClaimStage(null);
+        resetClaimStage();
       }
       // Release the ref only if this controller is still the active one.
       if (claimAbortRef.current === controller) {
@@ -1266,9 +1290,9 @@ export default function App() {
       // Fund round `round` again so this exercises the nullifier-reuse
       // check specifically, not just "the pot is empty" — the same
       // proof's nullifier gets rejected even against a fresh, funded round.
-      const adminClient = await connect({ ...NETWORK, onEvent: (e) => setEvents(prev => [...prev, e]) }, admin);
+      const adminClient = await connect({ ...NETWORK, onEvent }, admin);
       for (const m of members) {
-        const memberClient = await connect({ ...NETWORK, onEvent: (e) => setEvents(prev => [...prev, e]) }, m.keypair);
+        const memberClient = await connect({ ...NETWORK, onEvent }, m.keypair);
         await fund(memberClient, { circleId, from: m.keypair.publicKey() });
       }
       const freshExternalNullifier = await computeExternalNullifier(
@@ -1277,13 +1301,17 @@ export default function App() {
       );
 
       setBusy(t("busy.replaying"));
-      await claim(adminClient, {
-        circleId,
-        recipient: Keypair.random().publicKey(),
-        nullifierHash,
-        externalNullifier: freshExternalNullifier,
-        proof,
-      });
+      await claim(
+        adminClient,
+        {
+          circleId,
+          recipient: Keypair.random().publicKey(),
+          nullifierHash,
+          externalNullifier: freshExternalNullifier,
+          proof,
+        },
+        PATIENT_RETRY_POLICY,
+      );
       setRejection(t("rejection.unexpected"));
     } catch (e) {
       setRejection(toUiError(e, t));
@@ -1480,7 +1508,7 @@ export default function App() {
               />
             </div>
             <p className="pot-label">
-              pot: {(Number(pot) / 1e7).toFixed(1)} / {contributionXlm * CIRCLE_SIZE} XLM ·
+              pot: {formatXlmDisplay(pot, locale)} / {contributionXlm * CIRCLE_SIZE} XLM ·
               round {round}
               {feeBps > 0 &&
                 ` · ${t("pot.fee", {
@@ -1697,6 +1725,7 @@ export default function App() {
             circleSize={CIRCLE_SIZE}
             pot={pot}
             timings={stepTimings}
+            recentEvents={recentEvents()}
           />
         </div>
       </div>

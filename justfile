@@ -12,8 +12,8 @@ set working-directory := '.'
 # ── Doctor ───────────────────────────────────────────────────────────────────
 
 # Run the toolchain doctor script (checks Rust, stellar CLI, Node, circom, just)
-doctor:
-    npm run doctor --workspace=scripts
+doctor *ARGS:
+    npm run doctor --workspace=scripts -- {{ARGS}}
 
 # ── Circuits ──────────────────────────────────────────────────────────────────
 
@@ -33,17 +33,14 @@ contract:
     cd contracts && stellar contract build
 
 # Generate (or regenerate) the XDR golden files for Circle / VerificationKey /
-# Proof.  Run this whenever you intentionally change the wire format, then
-# commit the updated .b64 files alongside the struct change.
-#
-# After running this, also update packages/client/src/contract.test.ts if
-# any expected field values or struct shapes changed, and bump SCHEMA_VERSION
-# in contracts/sharibo/src/test.rs.
+# Proof. Full workflow (schema bump, client tests, commit steps) lives in
+# contracts/sharibo/test_snapshots/xdr_goldens/README.md — start there.
 xdr-goldens:
     cd contracts && UPDATE_GOLDEN=1 cargo test -p sharibo xdr_golden
     @echo ""
     @echo "Goldens written to contracts/sharibo/test_snapshots/xdr_goldens/"
-    @echo "Review with: git diff --stat contracts/sharibo/test_snapshots/xdr_goldens/"
+    @echo "See contracts/sharibo/test_snapshots/xdr_goldens/README.md for follow-up steps."
+    @echo "Review with: git diff --stat contracts/sharibo/test_snapshots/xdr_goldens/ test-vectors/xdr/"
 # ── Dead-code check ───────────────────────────────────────────────────────────
 
 # Check for unused files, exports, and dependencies across all TS workspaces.
