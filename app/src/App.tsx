@@ -26,6 +26,9 @@ import {
   TREE_LEVELS,
   xlmToStroops,
   formatXlm,
+  formatXlmDisplay,
+  POLL_RETRY_POLICY,
+  PATIENT_RETRY_POLICY,
   type Identity,
   type ContractProof,
   type CircleId,
@@ -580,7 +583,7 @@ function EnvSetupScreen({ errors }: { errors: string[] }) {
         <p className={styles.sub}>
           {t("env.setupIntro")} {t("env.setupHowTo")}
         </p>
-        <ul style={{ textAlign: "left", margin: "1rem 0", padding: "0 1.25rem" }}>
+        <ul style={{ textAlign: "start", margin: "1rem 0", padding: "0 1.25rem" }}>
           {errors.map((err) => (
             <li key={err} style={{ marginBottom: "0.5rem" }}>
               <code>{err}</code>
@@ -649,7 +652,7 @@ function ClaimExplainer() {
 // ── Root component ───────────────────────────────────────────────────────────
 
 export default function App() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const online = useOnlineStatus();
   const {
     onEvent,
@@ -743,8 +746,8 @@ export default function App() {
     try {
       const { connect, getCircle } = await import("@sharibo/client");
       const adminClient = await connect(NETWORK, admin);
-      const circle = await getCircle(adminClient, circleId);
-      
+      const circle = await getCircle(adminClient, circleId, POLL_RETRY_POLICY);
+
       setPot(circle.pot);
       setOnChainContributors(circle.contributors);
       setCancelled(circle.cancelled);
@@ -1234,15 +1237,18 @@ export default function App() {
 
       if (signal.aborted) return;
       setClaimStage("submitting");
-      // tx:submitted / tx:confirmed from claim() land in the same event log
-      const adminClient = await connect({ ...NETWORK, onEvent }, admin);
-      const { hash } = await claim(adminClient, {
-        circleId,
-        recipient: recipient.publicKey(),
-        nullifierHash: generated.nullifierHash,
-        externalNullifier: generated.externalNullifier,
-        proof: generated.proof,
-      });
+      const adminClient = await connect({ ...NETWORK, onEvent: (e) => setEvents(prev => [...prev, e]) }, admin);
+      const { hash } = await claim(
+        adminClient,
+        {
+          circleId,
+          recipient: recipient.publicKey(),
+          nullifierHash: generated.nullifierHash,
+          externalNullifier: generated.externalNullifier,
+          proof: generated.proof,
+        },
+        PATIENT_RETRY_POLICY,
+      );
 
       if (signal.aborted) return;
       setProof(generated.proof);
@@ -1295,13 +1301,17 @@ export default function App() {
       );
 
       setBusy(t("busy.replaying"));
-      await claim(adminClient, {
-        circleId,
-        recipient: Keypair.random().publicKey(),
-        nullifierHash,
-        externalNullifier: freshExternalNullifier,
-        proof,
-      });
+      await claim(
+        adminClient,
+        {
+          circleId,
+          recipient: Keypair.random().publicKey(),
+          nullifierHash,
+          externalNullifier: freshExternalNullifier,
+          proof,
+        },
+        PATIENT_RETRY_POLICY,
+      );
       setRejection(t("rejection.unexpected"));
     } catch (e) {
       setRejection(toUiError(e, t));
@@ -1498,7 +1508,7 @@ export default function App() {
               />
             </div>
             <p className="pot-label">
-              pot: {(Number(pot) / 1e7).toFixed(1)} / {contributionXlm * CIRCLE_SIZE} XLM ·
+              pot: {formatXlmDisplay(pot, locale)} / {contributionXlm * CIRCLE_SIZE} XLM ·
               round {round}
               {feeBps > 0 &&
                 ` · ${t("pot.fee", {

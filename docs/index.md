@@ -18,10 +18,15 @@ each covers and where to find it.
 
 ## Hackathon-era artifacts (`docs/hackathon/` — point-in-time archive, not maintained)
 
+These files carry an in-file archive notice. Doc-accuracy / structure checks
+must skip `docs/hackathon/**` explicitly (see `scripts/doc-archive.mjs`) —
+an archive is allowed to contain stale claims.
+
 | File | Description |
 |---|---|
 | [`hackathon/hackathon_demo_script.md`](hackathon/hackathon_demo_script.md) | Annotated 2m20s demo video script (shot list, voiceover, overlays, recording checklist) |
 | [`hackathon/dorahacks_submission.md`](hackathon/dorahacks_submission.md) | DoraHacks submission form text (project description, evidence, honest scope) |
+| [`hackathon/VERIFY.md`](hackathon/VERIFY.md) | Historical one-minute judge verification guide (stale testnet IDs; see README for current evidence) |
 
 ## Architecture
 
@@ -55,12 +60,6 @@ each covers and where to find it.
 | [`contracts/README.md`](../contracts/README.md) | Contract build and deploy instructions |
 | [`contracts/BENCHMARKS.md`](../contracts/BENCHMARKS.md) | CPU instruction benchmarks and gas analysis for contract entrypoints |
 
-## Verifiability
-
-| File | Description |
-|---|---|
-| [`judges/VERIFY.md`](../judges/VERIFY.md) | One-minute verification guide: confirm the on-chain proof is real without installing anything |
-
 ## Configuration examples
 
 | File | Description |
@@ -74,7 +73,7 @@ each covers and where to find it.
 
 - **Just getting started:** [`README.md`](../README.md), [`NOTES.md`](../NOTES.md)
 - **Deep technical dive:** [`full_product_breakdown.md`](../full_product_breakdown.md)
-- **Verifying the on-chain proof:** [`judges/VERIFY.md`](../judges/VERIFY.md)
+- **Historical verify checklist (archived):** [`hackathon/VERIFY.md`](hackathon/VERIFY.md)
 - **Building the circuit:** [`circuits/README.md`](../circuits/README.md)
 - **Building the contract:** [`contracts/README.md`](../contracts/README.md)
 - **Architecture decisions:** [`docs/adr/001-upgradeability.md`](adr/001-upgradeability.md)

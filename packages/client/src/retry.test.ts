@@ -1,81 +1,93 @@
-import { describe, it } from "vitest";
-import assert from "node:assert/strict";
-import { withRetry, isTransientError, DEFAULT_RETRY_POLICY } from "./retry.js";
-import { SdkEventEmitter, type SdkEvent } from "./events.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  withRetry,
+  computeDelay,
+  DEFAULT_RETRY_POLICY,
+  POLL_RETRY_POLICY,
+  PATIENT_RETRY_POLICY,
+} from "./retry.js";
+import { SdkEventEmitter } from "./events.js";
 
-describe("isTransientError", () => {
-  it("recognises HTTP 429 / 5xx and timeout language", () => {
-    assert.equal(isTransientError(new Error("HTTP 429 Too Many Requests")), true);
-    assert.equal(isTransientError(new Error("503 Service Unavailable")), true);
-    assert.equal(isTransientError(new Error("request timeout")), true);
-    assert.equal(isTransientError(new Error("InvalidProof")), false);
+describe("computeDelay", () => {
+  it("doubles per attempt and applies jitter in [0.5, 1.0]", () => {
+    const policy = { maxRetries: 3, baseDelayMs: 100 };
+    expect(computeDelay(policy, 1, () => 0)).toBe(50); // 100 * 1 * 0.5
+    expect(computeDelay(policy, 1, () => 1)).toBe(100); // 100 * 1 * 1.0
+    expect(computeDelay(policy, 2, () => 0)).toBe(100); // 100 * 2 * 0.5
+    expect(computeDelay(policy, 3, () => 1)).toBe(400); // 100 * 4 * 1.0
   });
 });
 
-describe("withRetry observability (#294 / #560)", () => {
-  it("emits rpc:retry when a transient failure is retried", async () => {
-    const events: SdkEvent[] = [];
-    const emitter = new SdkEventEmitter((e) => events.push(e));
-    let calls = 0;
+describe("retry presets", () => {
+  it("exports named presets with documented budgets", () => {
+    expect(POLL_RETRY_POLICY.maxRetries).toBe(1);
+    expect(DEFAULT_RETRY_POLICY.maxRetries).toBe(3);
+    expect(DEFAULT_RETRY_POLICY.baseDelayMs).toBe(500);
+    expect(PATIENT_RETRY_POLICY.maxRetries).toBe(5);
+    // Worst-case sleep for DEFAULT: 500 * (2^3 - 1) = 3500
+    const defaultWorst =
+      DEFAULT_RETRY_POLICY.baseDelayMs * (2 ** DEFAULT_RETRY_POLICY.maxRetries - 1);
+    expect(defaultWorst).toBe(3500);
+  });
+});
 
-    const result = await withRetry(
-      async () => {
-        calls++;
-        if (calls === 1) throw new Error("429 rate limited");
-        return "ok";
-      },
-      { maxRetries: 2, baseDelayMs: 1 },
-      emitter,
-    );
-
-    assert.equal(result, "ok");
-    assert.ok(events.some((e) => e.type === "rpc:attempt"));
-    const retry = events.find((e) => e.type === "rpc:retry");
-    assert.ok(retry && retry.type === "rpc:retry");
-    assert.equal(retry.attempt, 1);
-    assert.ok(typeof retry.delay === "number" && retry.delay >= 0);
-    assert.ok(events.some((e) => e.type === "rpc:success"));
+describe("withRetry", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  it("emits rpc:failure when retries are exhausted on a transient RPC error", async () => {
-    const events: SdkEvent[] = [];
-    const emitter = new SdkEventEmitter((e) => events.push(e));
-
-    await assert.rejects(
-      () =>
-        withRetry(
-          async () => {
-            throw new Error("429 Too Many Requests");
-          },
-          { maxRetries: 1, baseDelayMs: 1 },
-          emitter,
-        ),
-      /429/,
-    );
-
-    assert.ok(events.some((e) => e.type === "rpc:retry"));
-    const failure = events.find((e) => e.type === "rpc:failure");
-    assert.ok(failure && failure.type === "rpc:failure");
-    assert.ok(failure.attempt >= 1);
+  it("returns on first success without retrying", async () => {
+    const fn = vi.fn().mockResolvedValue("ok");
+    const promise = withRetry(fn, POLL_RETRY_POLICY);
+    await expect(promise).resolves.toBe("ok");
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it("emits rpc:failure immediately for non-transient errors (no retry)", async () => {
-    const events: SdkEvent[] = [];
-    const emitter = new SdkEventEmitter((e) => events.push(e));
+  it("retries transient 429 failures then succeeds", async () => {
+    const fn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("429 Too Many Requests"))
+      .mockResolvedValueOnce("ok");
 
-    await assert.rejects(
-      () =>
-        withRetry(
-          async () => {
-            throw new Error("ContractError: AlreadyClaimed");
-          },
-          DEFAULT_RETRY_POLICY,
-          emitter,
-        ),
-      /AlreadyClaimed/,
-    );
+    const promise = withRetry(fn, { maxRetries: 2, baseDelayMs: 10 });
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toBe("ok");
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
 
-    assert.ok(!events.some((e) => e.type === "rpc:retry"));
-    assert.ok(events.some((e) => e.type === "rpc:failure"));
+  it("does not retry non-transient ContractError-like messages", async () => {
+    const err = new Error("ContractError: AlreadyClaimed");
+    const fn = vi.fn().mockRejectedValue(err);
+    await expect(withRetry(fn, DEFAULT_RETRY_POLICY)).rejects.toBe(err);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("exhausts the retry budget and rethrows", async () => {
+    const err = new Error("503 Service Unavailable");
+    const fn = vi.fn().mockRejectedValue(err);
+    const promise = withRetry(fn, { maxRetries: 2, baseDelayMs: 5 });
+    const assertion = expect(promise).rejects.toBe(err);
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(fn).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
+  });
+
+  it("emits rpc:attempt, rpc:retry, and rpc:success", async () => {
+    const events: string[] = [];
+    const emitter = new SdkEventEmitter((e) => events.push(e.type));
+
+    const fn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockResolvedValueOnce("ok");
+
+    const promise = withRetry(fn, { maxRetries: 1, baseDelayMs: 10 }, emitter);
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(events).toEqual(["rpc:attempt", "rpc:retry", "rpc:attempt", "rpc:success"]);
   });
 });

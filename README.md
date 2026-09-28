@@ -5,9 +5,9 @@
 [![Circom 2.2.3](https://img.shields.io/badge/circom-2.2.3-orange)](circuits/README.md)
 [![Soroban SDK 23](https://img.shields.io/badge/soroban--sdk-23-1F8DD6)](contracts/Cargo.toml)
 
-**Private rotating savings circles on Stellar — the ajo / tanda / susu / tontine, with the payout anonymized by a real Groth16 zero-knowledge proof, verified on-chain.**
+**Private rotating savings circles on Stellar — the ajo / tanda / susu / tontine / جمعية, with the payout anonymized by a real Groth16 zero-knowledge proof, verified on-chain.**
 
-**ajo · esusu · tanda · cundina · susu · tontine · junta · pandero · consórcio · hui · paluwagan · chit fund**
+**ajo · esusu · tanda · cundina · susu · tontine · junta · pandero · consórcio · hui · paluwagan · chit fund · جمعية**
 
 Five members fund a shared pot. One member claims it — by proving _"I'm a genuine, un-paid member of this circle"_ without revealing **which** member. The proof is generated in the browser and verified by a Soroban contract using Stellar's native BLS12-381 pairing host functions. No mock. No stub. No trusted server.
 
@@ -25,19 +25,20 @@ A **rotating savings and credit association** (ROSCA) is one of the oldest finan
 
 **Where the names come from:**
 
-| Name | Region / Community |
-|---|---|
-| **ajo** / **esusu** | Nigeria, West Africa (Yoruba) |
-| **tanda** | Mexico, Latin America |
-| **susu** | Ghana, the Caribbean |
-| **tontine** | Francophone Africa, France (origin: 17th-c. Italian *tontina*) |
-| **cundina** | Colombia |
-| **junta** | Peru, Dominican Republic |
-| **pandero** | Venezuela |
-| **consórcio** | Brazil |
-| **hui** | China, Taiwan, Chinese diaspora |
-| **paluwagan** | Philippines |
-| **chit fund** | India (registered, regulated variant) |
+| Name | Region / Community | Locale | Review |
+|---|---|---|---|
+| **ajo** / **esusu** | Nigeria, West Africa (Yoruba) | yo | machine |
+| **tanda** | Mexico, Latin America | es | native |
+| **susu** | Ghana, the Caribbean | en (no dedicated) | — |
+| **tontine** | Francophone Africa, France (origin: 17th-c. Italian *tontina*) | fr | machine |
+| **cundina**, **junta**, **pandero** | Colombia / Peru, Dominican Republic / Venezuela | es | native |
+| **consórcio** | Brazil | pt | machine |
+| **hui** | China, Taiwan, Chinese diaspora | zh | machine |
+| **paluwagan** | Philippines | tl | machine |
+| **chit fund** | India (registered, regulated variant) | hi | machine |
+| **جمعية** / **gam'eya** | Arabic-speaking world | ar | machine |
+
+`en` and `es` are the reviewed, complete locales. Other locale files may be machine-translated stubs or partials; **`ar` is the RTL proof locale** (sets `dir="rtl"` and exercises logical CSS).
 
 **Why privacy matters:** In a traditional ROSCA, everyone knows who collected the pot this round. That transparency is fine when the group is small and offline — but put the same circle on a public blockchain and suddenly every deposit and payout is visible to *the entire world*. Sharibo's zero-knowledge proof restores the privacy boundary the original social structure assumes: the contract knows *that* the claimant is a rightful member (via the ZK proof and the group's Merkle root), but **no observer — not even the other members — can link the payout address back to a specific member**. The circle stays on-chain; the connections stay off it.
 
@@ -323,15 +324,15 @@ To change the depth:
 sharibo/
 ├── circuits/            membership.template.circom (source) + config.json, compile/setup/prove scripts, circuit tests, verification_key.json
 ├── contracts/sharibo/   the Soroban contract (lib.rs) + its test suite (test.rs)
+├── packages/core/       shared crypto primitives (Poseidon, Merkle, identity)
 ├── packages/client/     isomorphic TS SDK: identity.ts, tree.ts, prove.ts, contract.ts, config.ts
 ├── test-vectors/        cross-implementation Poseidon fixtures shared by the client and circuit test suites
-├── scripts/e2e.ts       full-round Node script against live testnet
-├── scripts/smoke.ts     read-only deployment health check (no transactions)
+├── scripts/             e2e/smoke helpers + maintenance checkers (secrets, SDK pin, clean)
 ├── app/                 React + Vite browser demo
+├── docs/                long-form docs, ADRs, and docs/hackathon/ (point-in-time archive)
 ├── README.md            this file
 ├── NOTES.md             the raw build/decision log — what was discovered, when, and why
-├── full_product_breakdown.md  every facet of the system, in detail
-└── docs/hackathon/hackathon_demo_script.md   demo video script (motion + voiceover)
+└── full_product_breakdown.md  every facet of the system, in detail
 ```
 
 Full annotated version (what each file does and why): [breakdown §16](full_product_breakdown.md#16-repository-structure). See also [docs/index.md](docs/index.md) for a complete documentation index.

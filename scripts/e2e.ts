@@ -428,9 +428,12 @@ async function main() {
   console.log("   payout confirmed: pot -> 0, round -> 1");
   
   // Log fee estimate vs actual charged delta if available
-  if (feeCharged) {
-    const feeChargedNum = typeof feeCharged === "string" ? BigInt(feeCharged) : feeCharged;
-    console.log("   claim fee charged:", feeChargedNum.toString(), "stroops");
+  if (claimResult.feeCharged) {
+    console.log(
+      "   claim fee charged:",
+      claimResult.feeCharged.toString(),
+      "stroops",
+    );
   }
 
   if (SKIP_REPLAY) {

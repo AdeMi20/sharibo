@@ -372,7 +372,19 @@ Every one of these is also logged, with more raw detail and the exact commands u
 
 ## 16. Repository structure
 
-Owned by [`docs/architecture.md`](docs/architecture.md) (directory ownership, toolchains, end-to-end data flow). The pitch-level tree lives in [`README.md` §Repository structure](README.md#repository-structure). This section no longer duplicates either.
+```
+sharibo/
+├── circuits/            membership.circom, compile/setup/prove scripts, circuit tests, verification_key.json
+├── contracts/sharibo/   the Soroban contract (lib.rs) + its test suite (test.rs)
+├── packages/core/       shared crypto primitives
+├── packages/client/     isomorphic TS SDK: identity.ts, tree.ts, prove.ts, contract.ts
+├── scripts/             e2e/smoke helpers + maintenance checkers
+├── app/                 React + Vite browser demo
+├── docs/                long-form docs + docs/hackathon/ (point-in-time archive)
+├── README.md            the pitch: what it does, architecture, run steps, honest limitations
+├── NOTES.md             the raw build/decision log — what was discovered, when, and why
+└── full_product_breakdown.md  this file
+```
 
 ## 17. How to run it
 
