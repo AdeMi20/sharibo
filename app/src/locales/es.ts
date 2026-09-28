@@ -31,6 +31,7 @@ const es = {
   "landing.sub.em2": "qui\u00e9n",
   "landing.sub.after": "reclam\u00f3.",
   "landing.launch": "Lanzar una tanda de 5 miembros en testnet",
+  "landing.contributionLabel": "Aporte por miembro (XLM)",
   "landing.previousCirclePrefix": "Tu tanda anterior sigue activa en",
   "landing.previousCircleLink": "tanda #{id} ↗",
   "landing.testnetFineprint":
@@ -173,6 +174,14 @@ const es = {
   "errorBoundary.reload": "Empezar de nuevo",
   "errorBoundary.fineprint": "Si esto sigue ocurriendo,",
   "errorBoundary.issueLink": "abre un issue en GitHub ↗",
+  "error.invalidCircleParams": "Se rechazaron los parámetros del círculo. Revisa el aporte, el tamaño y la clave de verificación.",
+  "error.contribution.empty": "Introduce un monto de aporte.",
+  "error.contribution.not_a_number": "El aporte debe ser un número decimal (p. ej. 10 o 0.5).",
+  "error.contribution.not_positive": "El aporte debe ser mayor que cero.",
+  "error.contribution.too_many_decimals": "El aporte admite como máximo 7 decimales (1 stroop).",
+  "error.contribution.out_of_range": "El aporte está fuera del rango admitido.",
+  "error.contribution.pot_overflow": "Aporte × tamaño del círculo desborda el pot on-chain.",
+  "error.contribution.unaffordable": "Friendbot solo fondea ~10000 XLM por cuenta; elige un aporte menor para que todos puedan aportar.",
 } as const;
 
 export default es;

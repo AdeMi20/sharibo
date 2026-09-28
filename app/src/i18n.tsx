@@ -6,7 +6,7 @@ type LocaleModule = {
   default: Dictionary;
 };
 
-const localeModules = import.meta.glob<LocaleModule>("./locales/*.ts", { eager: true });
+const localeModules = import.meta.glob<LocaleModule>("./locales/!(*.test).ts", { eager: true });
 
 function loadDictionaries(): Record<string, Dictionary> {
   const out: Record<string, Dictionary> = {};

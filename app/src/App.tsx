@@ -26,6 +26,8 @@ import {
   TREE_LEVELS,
   xlmToStroops,
   formatXlm,
+  validateContributionAmount,
+  ContributionValidationError,
   type Identity,
   type ContractProof,
   type CircleId,
@@ -39,6 +41,7 @@ import {
   RoundFullError,
   OverflowError,
   CircleCancelledError,
+  InvalidCircleParamsError,
   RpcError,
   ProvingError,
   InvalidInputError,
@@ -174,6 +177,12 @@ function toUiError(error: unknown, t: (key: string, vars?: Record<string, string
   }
   if (error instanceof CircleCancelledError) {
     return "This circle has been cancelled. Start a new one.";
+  }
+  if (error instanceof InvalidCircleParamsError) {
+    return t("error.invalidCircleParams");
+  }
+  if (error instanceof ContributionValidationError) {
+    return t(`error.contribution.${error.causeCode}`);
   }
 
   if (error instanceof ContractError) {
@@ -658,7 +667,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<any[]>([]);
 
-  const [contributionXlm, setContributionXlm] = useState(10);
+  const [contributionXlm, setContributionXlm] = useState("10");
+  const [contributionError, setContributionError] = useState<string | null>(null);
   const [admin, setAdmin] = useState<Keypair | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [tree, setTree] = useState<MerkleTree | null>(null);
@@ -708,7 +718,31 @@ export default function App() {
 
   const [prevCircle, setPrevCircle] = useState<{ id: string; explorerUrl: string } | null>(null);
 
-  const contribution = xlmToStroops(contributionXlm);
+  const contribution = (() => {
+    try {
+      return validateContributionAmount(contributionXlm, { size: CIRCLE_SIZE }).stroops;
+    } catch {
+      try {
+        return xlmToStroops(contributionXlm);
+      } catch {
+        return 0n;
+      }
+    }
+  })();
+
+  function onContributionChange(next: string) {
+    setContributionXlm(next);
+    try {
+      validateContributionAmount(next, { size: CIRCLE_SIZE });
+      setContributionError(null);
+    } catch (e) {
+      if (e instanceof ContributionValidationError) {
+        setContributionError(t(`error.contribution.${e.causeCode}`));
+      } else {
+        setContributionError(t("error.contribution.not_a_number"));
+      }
+    }
+  }
   // Holds the AbortController for the currently-running claim flow so that
   // resetToLanding and the unmount cleanup can cancel it synchronously.
   const claimAbortRef = useRef<AbortController | null>(null);
@@ -887,7 +921,8 @@ export default function App() {
     setBusy(null);
     setError(null);
     setCirclePhase("idle");
-    setContributionXlm(10);
+    setContributionXlm("10");
+    setContributionError(null);
     setAdmin(null);
     setMembers([]);
     setTree(null);
@@ -911,7 +946,7 @@ export default function App() {
 
   function loadState(parsed: any) {
     setCirclePhase("loading");
-    setContributionXlm(parsed.contributionXlm);
+    setContributionXlm(String(parsed.contributionXlm ?? "10"));
     setAdmin(Keypair.fromSecret(parsed.adminSecret));
     
     const loadedMembers = parsed.members.map((m: any) => ({
@@ -949,6 +984,21 @@ export default function App() {
 
   async function startCircle() {
     setError(null);
+    let validatedStroops: bigint;
+    try {
+      validatedStroops = validateContributionAmount(contributionXlm, {
+        size: CIRCLE_SIZE,
+      }).stroops;
+      setContributionError(null);
+    } catch (e) {
+      const message =
+        e instanceof ContributionValidationError
+          ? t(`error.contribution.${e.causeCode}`)
+          : t("error.contribution.not_a_number");
+      setContributionError(message);
+      setError(message);
+      return;
+    }
     setCirclePhase("loading");
     setBusy(
       "Generating a fresh admin + 5 member identities and funding via friendbot…",
@@ -986,7 +1036,7 @@ export default function App() {
         admin: adminKp.publicKey(),
         token: TOKEN,
         root: newTree.root,
-        contribution,
+        contribution: validatedStroops,
         size: CIRCLE_SIZE,
         vk,
         feeBps: 0,
@@ -1379,9 +1429,31 @@ export default function App() {
             pot. Sharibo proves <em>who's entitled to claim</em> without ever
             revealing <em>who</em> claimed.
           </p>
+          <p className={styles.sub}>
+            Every round, everyone contributes. Every round, one member takes the
+            pot. Sharibo proves <em>who's entitled to claim</em> without ever
+            revealing <em>who</em> claimed.
+          </p>
+          <label className={styles.contributionField}>
+            <span>{t("landing.contributionLabel")}</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-invalid={contributionError ? true : undefined}
+              aria-describedby={contributionError ? "contribution-error" : undefined}
+              value={contributionXlm}
+              disabled={!!busy}
+              onChange={(e) => onContributionChange(e.target.value)}
+            />
+          </label>
+          {contributionError && (
+            <p id="contribution-error" className={styles.error} role="alert">
+              {contributionError}
+            </p>
+          )}
           <button
             className={`${styles.btn} ${styles.btnPrimary}`}
-            disabled={!online || !!busy}
+            disabled={!online || !!busy || !!contributionError}
             onClick={startCircle}
           >
             {busy ?? t("landing.launch")}
@@ -1480,7 +1552,7 @@ export default function App() {
               />
             </div>
             <p className="pot-label">
-              pot: {(Number(pot) / 1e7).toFixed(1)} / {contributionXlm * CIRCLE_SIZE} XLM ·
+              pot: {(Number(pot) / 1e7).toFixed(1)} / {(Number(contribution) / 1e7) * CIRCLE_SIZE} XLM ·
               round {round}
               {feeBps > 0 &&
                 ` · ${t("pot.fee", {

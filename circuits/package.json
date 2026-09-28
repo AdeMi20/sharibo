@@ -24,7 +24,8 @@
     "verify-setup": "bash scripts/verify-setup.sh",
     "verify-artifacts": "node scripts/verify-artifacts.mjs",
     "prove": "bash scripts/prove.sh",
-    "test": "mocha --require tsx/cjs test/**/*.test.js --timeout 120000"
+    "test": "mocha --require tsx/cjs 'test/**/*.test.js' --timeout 120000",
+    "test:checkers": "mocha --require tsx/cjs test/checkers.test.js --timeout 30000"
   },
   "dependencies": {
     "poseidon-bls12381": "1.0.2",
