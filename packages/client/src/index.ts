@@ -1,34 +1,123 @@
-// No `node:*` imports in this package — all modules run unmodified in both
-// Node (18+) and the browser app. If a future addition needs Node-only APIs,
-// add a comment guard here and gate it behind a platform check.
-export * from "./amount.js";
-export * from "./identity.js";
-export * from "./tree.js";
-export * from "./prove.js";
-export * from "./validate.js";
-export * from "./contract.js";
-export * from "./identity.js";
-export * from "./prove.js";
-export * from "./tree.js";
-export * from "./events.js";
-export * from "./networks.js";
-export * from "./config.js";
-export * from "./errors.js";
-export * from "./artifacts.js";
-export { decodeContractError } from "./decodeError.js";
-export * from "./retry.js";
-export * from "./events.js";
-export * from "./sdk.js";
-
-// SDK-specific error classes (base types come from @sharibo/core).
+// Explicit public API barrel
 export {
-  ProvingError,
-  RpcError,
+  STROOPS_PER_XLM,
+  formatXlm,
+  formatXlmDisplay,
+  stroopsToXlm,
+  xlmToStroops
+} from "./amount.js";
+export {
+  computeExternalNullifier,
+  computeNullifierHash,
+  computeRecipientHash,
+  generateIdentity,
+  poseidon,
+  randomFieldElement
+} from "./identity.js";
+export {
+  MerkleTree,
+  ZERO_VALUE
+} from "./tree.js";
+export {
+  encodeG1,
+  encodeG2,
+  feToBytes,
+  fullProve,
+  g1ToBytes,
+  g2ToBytes,
+  generateProof,
+  prove,
+  validateCircuitInput,
+  verificationKeyToContractFormat,
+  verifyProofLocally
+} from "./prove.js";
+export {
+  validateContractProof,
+  validateContractVerificationKey
+} from "./validate.js";
+export {
+  EXPLORER_NETWORKS,
+  cancelCircle,
+  claim,
+  clearContractClientCache,
+  connect,
+  connectReadOnly,
+  createCircle,
+  estimateClaimFee,
+  explorerTxUrl,
+  fund,
+  getCircle,
+  getCircleCount,
+  getCircleStatus,
+  getContributors,
+  getPot,
+  getRound,
+  getStatus,
+  hasClaimed,
+  populateTxResult,
+  resolveSigner
+} from "./contract.js";
+export {
+  SdkEventEmitter
+} from "./events.js";
+export {
+  NETWORKS,
+  isTestnet,
+  networkOf
+} from "./networks.js";
+export {
+  MAX_CIRCLE_SIZE,
+  TREE_LEVELS
+} from "./config.js";
+export {
+  AlreadyClaimedError,
+  CircleCancelledError,
+  CircleNotFoundError,
   ContractError,
+  InvalidInputError,
+  InvalidProofError,
+  OverflowError,
+  ProvingError,
+  RoundFullError,
+  RoundNotFundedError,
+  RpcError,
+  ShariboError,
+  WrongRoundTagError,
+  describeContractError,
+  describeError,
+  parseContractErrorCode
 } from "./errors.js";
-export * from "./brand.js";
+export {
+  configureArtifacts
+} from "./artifacts.js";
+export {
+  decodeContractError
+} from "./decodeError.js";
+export {
+  DEFAULT_RETRY_POLICY,
+  PATIENT_RETRY_POLICY,
+  POLL_RETRY_POLICY,
+  computeDelay,
+  withRetry
+} from "./retry.js";
+export {
+  ShariboSDK
+} from "./sdk.js";
+export {
+  makeCircleId
+} from "./brand.js";
 
-// Re-exported for convenience so consumers can import from "@sharibo/client"
-// rather than digging into the contract module.
-export { explorerTxUrl } from "./contract.js";
-export * from "./networks.js";
+// Types
+export type * from "./amount.js";
+export type * from "./identity.js";
+export type * from "./tree.js";
+export type * from "./prove.js";
+export type * from "./validate.js";
+export type * from "./contract.js";
+export type * from "./events.js";
+export type * from "./networks.js";
+export type * from "./config.js";
+export type * from "./errors.js";
+export type * from "./retry.js";
+export type * from "./sdk.js";
+export type * from "./brand.js";
