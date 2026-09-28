@@ -140,6 +140,7 @@ export async function connect(
   try {
     const client: ShariboClient = await clientPromise;
     client.emitter = emitter;
+    client.networkPassphrase = config.networkPassphrase;
     return client;
   } catch (error) {
     contractClientCache.delete(cacheKey);
@@ -168,19 +169,33 @@ export async function connectReadOnly(
 }
 
 /**
- * Result of a contract transaction.
+ * Result of a state-changing contract transaction (createCircle / fund / claim / cancelCircle).
  *
- * @template T - The type of the transaction result.
- * @property result - The return value from the contract method.
- * @property hash - The transaction hash.
+ * @template T - Decoded return value from the contract method.
  */
 export interface TxResult<T> {
+  /** Decoded return value from the contract method (e.g. circle id for createCircle). */
   result: T;
+  /** Transaction hash (hex) of the submitted Soroban transaction. Always present after a successful signAndSend. */
   hash: string;
-  /** Ledger sequence number the transaction was included in, if available. */
+  /**
+   * Ledger sequence the transaction was included in.
+   * Optional because some RPC responses omit `getTransactionResponse.ledger`
+   * before finality is fully polled; when absent, explorers still work from `hash`.
+   */
   ledger?: number;
-  /** Fee charged for the transaction in stroops, if available. */
-  feeCharged?: string;
+  /**
+   * Actual fee charged for the transaction, in stroops, as a bigint.
+   * Optional because the RPC `getTransactionResponse` may not include `feeCharged`
+   * on every transport; when present it is coerced to bigint at this boundary.
+   */
+  feeCharged?: bigint;
+  /**
+   * Network-aware stellar.expert URL for `hash`, or null when the passphrase is
+   * unknown to EXPLORER_NETWORKS (futurenet / custom). Always set by populateTxResult
+   * when a networkPassphrase is provided; otherwise undefined.
+   */
+  explorerUrl?: string | null;
 }
 
 /**
@@ -217,16 +232,62 @@ export function explorerTxUrl(hash: string, networkPassphrase: string): string |
 }
 
 
-function populateTxResult<T>(
-  result: T,
-  sent: { sendTransactionResponse: { hash: string }; getTransactionResponse?: { ledger?: number; feeCharged?: string } },
-): TxResult<T> {
-  return {
-    result,
-    hash: sent.sendTransactionResponse.hash,
-    ledger: sent.getTransactionResponse?.ledger,
-    feeCharged: sent.getTransactionResponse?.feeCharged,
+/** Shape returned by @stellar/stellar-sdk contract method `signAndSend()`. */
+export type SignAndSendResult = {
+  result: unknown;
+  sendTransactionResponse: { hash?: string };
+  getTransactionResponse?: {
+    ledger?: number;
+    feeCharged?: string | number | bigint;
   };
+};
+
+function coerceFeeCharged(
+  feeCharged: string | number | bigint | undefined,
+): bigint | undefined {
+  if (feeCharged === undefined) return undefined;
+  return typeof feeCharged === "bigint" ? feeCharged : BigInt(feeCharged);
+}
+
+/**
+ * Maps a successful `signAndSend()` payload to {@link TxResult}.
+ * Exported for fixture tests; production callers use `fund` / `claim` / etc.
+ */
+export function populateTxResult<T>(
+  result: T,
+  sent: SignAndSendResult,
+  networkPassphrase?: string,
+): TxResult<T> {
+  const hash = sent.sendTransactionResponse?.hash;
+  if (hash === undefined || hash === "") {
+    throw new Error("hash");
+  }
+
+  const txResult: TxResult<T> = {
+    result,
+    hash,
+  };
+
+  const ledger = sent.getTransactionResponse?.ledger;
+  if (ledger !== undefined) {
+    txResult.ledger = ledger;
+  }
+
+  const feeCharged = coerceFeeCharged(sent.getTransactionResponse?.feeCharged);
+  if (feeCharged !== undefined) {
+    txResult.feeCharged = feeCharged;
+  }
+
+  if (networkPassphrase !== undefined) {
+    txResult.explorerUrl = explorerTxUrl(hash, networkPassphrase);
+  }
+
+  return txResult;
+}
+
+function networkPassphraseFromClient(client: ShariboClient): string | undefined {
+  const pp = client?.networkPassphrase;
+  return typeof pp === "string" ? pp : undefined;
 }
 
 /**
@@ -333,7 +394,11 @@ export async function createCircle(
       fee_recipient: args.feeRecipient,
     }), retryPolicy, client.emitter);
     const sent = await tx.signAndSend();
-    return populateTxResult(sent.result as bigint, sent);
+    return populateTxResult(
+      sent.result as bigint,
+      sent,
+      networkPassphraseFromClient(client),
+    );
   } catch (err) {
     throw decodeContractError(err);
   }
@@ -356,7 +421,7 @@ export async function fund(
   try {
     const tx: ContractTx = await withRetry(() => client.fund({ circle_id: args.circleId, from: args.from }), retryPolicy, client.emitter);
     const sent = await tx.signAndSend();
-    return populateTxResult(undefined, sent);
+    return populateTxResult(undefined, sent, networkPassphraseFromClient(client));
   } catch (err) {
     throw decodeContractError(err);
   }
@@ -395,7 +460,7 @@ export async function claim(
       proof: args.proof,
     }), retryPolicy, client.emitter);
     const sent = await tx.signAndSend();
-    return populateTxResult(undefined, sent);
+    return populateTxResult(undefined, sent, networkPassphraseFromClient(client));
   } catch (err) {
     throw decodeContractError(err);
   }
@@ -579,7 +644,7 @@ export async function cancelCircle(
   try {
     const tx: ContractTx = await withRetry(() => client.cancel_circle({ circle_id: args.circleId }), retryPolicy, client.emitter);
     const sent = await tx.signAndSend();
-    return populateTxResult(undefined, sent);
+    return populateTxResult(undefined, sent, networkPassphraseFromClient(client));
   } catch (err) {
     throw decodeContractError(err);
   }
