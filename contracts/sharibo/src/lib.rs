@@ -16,7 +16,7 @@ use soroban_sdk::{
 ///
 /// **Cross-component invariant:** any change to this struct's wire format must
 /// be coordinated with the circuit public signals, contract `public_inputs`,
-/// and SDK encoding. See #344.
+/// and SDK encoding. See docs/wire-format.md (#344).
 #[contracttype]
 #[derive(Clone)]
 pub struct VerificationKey {
@@ -40,7 +40,7 @@ pub struct VerificationKey {
 ///
 /// **Cross-component invariant:** any change to this struct's wire format must
 /// be coordinated with the circuit public signals, contract `public_inputs`,
-/// and SDK encoding. See #344.
+/// and SDK encoding. See docs/wire-format.md (#344).
 #[contracttype]
 #[derive(Clone)]
 pub struct Proof {
@@ -254,6 +254,11 @@ const PUBLIC_INPUT_COUNT: u32 = 4;
 /// Upper bound for [`Circle::fee_bps`]: 10_000 basis points = 100% of a pot.
 /// `apply_fee` and `create_circle` share this single source of truth.
 const MAX_FEE_BASIS_POINTS: u32 = 10_000;
+
+/// Maximum circle size = Merkle tree capacity (`2^levels` from
+/// `circuits/config.json`). With `levels = 4` this is 16. Must stay in sync
+/// with the circuit depth — `max_circle_size_matches_circuit_levels` asserts it.
+pub const MAX_CIRCLE_SIZE: u32 = 16;
 
 const LEDGER_THRESHOLD: u32 = 100;
 
@@ -1052,7 +1057,7 @@ impl Contract {
     // Poseidon is used where it actually earns its keep: *inside* the
     // circuit's constraint system (commitment + nullifierHash), where a
     // SNARK-unfriendly hash like SHA-256 would cost far more constraints.
-    // See NOTES.md.
+    // See docs/wire-format.md (round-tag bytes).
     fn compute_external_nullifier(env: &Env, circle_id: u64, round: u32) -> Fr {
         let mut bytes = Bytes::new(env);
         bytes.extend_from_array(&circle_id.to_be_bytes());
@@ -1074,9 +1079,9 @@ impl Contract {
     }
 
     // Real on-chain Groth16 verification over BLS12-381, using Soroban's
-    // native accelerated pairing host functions (see NOTES.md for why
-    // BLS12-381 rather than BN254 — a pure-Rust BN254 pairing check does not
-    // fit the CPU budget). Checks the standard Groth16 pairing equation:
+    // native accelerated pairing host functions (see docs/adr/005-bls12-381-curve-choice.md
+    // and contracts/BENCHMARKS.md — pure-Rust BN254 does not fit the CPU budget).
+    // Checks the standard Groth16 pairing equation:
     // e(-A, B) * e(alpha, beta) * e(vk_x, gamma) * e(C, delta) == 1
     // where vk_x = ic[0] + sum(public_inputs[i] * ic[i+1]).
     fn verify_groth16(

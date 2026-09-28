@@ -180,6 +180,28 @@ async function checkJust(): Promise<Check> {
   };
 }
 
+async function checkCargoLlvmCov(): Promise<Check> {
+  const out = await run("cargo", ["llvm-cov", "--version"]);
+  const required = "cargo-llvm-cov (optional, for `just coverage`)";
+  if (!out.startsWith("__ERROR__") && out.length > 0) {
+    return {
+      name: "cargo-llvm-cov",
+      ok: true,
+      found: out,
+      required,
+      install: "cargo install cargo-llvm-cov",
+    };
+  }
+  return {
+    name: "cargo-llvm-cov",
+    ok: true,
+    found: "missing (optional)",
+    required,
+    install: "cargo install cargo-llvm-cov",
+    fix: "Needed for contract coverage (`just coverage`). Without it the contracts step fails hard.",
+  };
+}
+
 function printCheck(c: Check): void {
   const icon = c.ok ? "✅" : "❌";
   console.log(`${icon} ${c.name}`);
@@ -200,8 +222,10 @@ async function main(): Promise<void> {
     checkNode(),
     checkCircom(),
     checkJust(),
+    checkCargoLlvmCov(),
   ]);
   for (const c of checks) printCheck(c);
+  // Optional tools report ok:true even when missing; only required failures exit 1.
   const failed = checks.filter((c) => !c.ok);
   if (failed.length > 0) {
     console.log(`❌ ${failed.length} issue(s) found. Fix the red items above and re-run.`);

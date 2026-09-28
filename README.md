@@ -109,9 +109,10 @@ Full structured breakdown — assets, adversaries, and which code enforces each 
 
 - **Claim-side privacy only.** Funding is fully public, by scope: shielded deposits are a different (harder) problem — roadmap.
 - **One round demoed**, not a full multi-round rotation with on-chain turn ordering.
-- **Testnet + test token**; single-party trusted setup (fine for a demo, not production).
+- **Testnet + test token**; single-party trusted setup (fine for a demo, not production). Planned multi-party runbook: [docs/ceremony.md](docs/ceremony.md) (#546) — **not executed yet**.
 - **Poseidon-over-BLS12-381 constants come from a third-party package** — modulus cross-checked against Soroban's own constant and structurally reviewed (8 full + 56 partial rounds, x⁵ S-box), but not independently audited. See canonical details in [docs/poseidon-provenance.md](docs/poseidon-provenance.md).
-- Nothing is silently faked; every simplification is disclosed here, in code comments, and in [NOTES.md](NOTES.md). Details: [breakdown §18](full_product_breakdown.md#18-honest-limitations).
+- **Not audited.** Audit-readiness materials (repro steps, scope draft, negative-test inventory) live in [docs/audit/](docs/audit/README.md) (#547) — not an audit report.
+- Nothing is silently faked; every simplification is disclosed here, in code comments, and in the historical [NOTES.md](NOTES.md) build log. Details: [breakdown §18](full_product_breakdown.md#18-honest-limitations).
 
 ## Tests
 
@@ -192,11 +193,12 @@ Circuit: `circuits/membership.circom`. Contract: `contracts/sharibo/src/lib.rs`.
 
 ### Invariants held across circuit / contract / client
 
-- **BLS12-381** throughout — not the more common BN254/bn128. Stellar's Soroban host only accelerates BLS12-381 pairing operations; a pure-Rust BN254 pairing check measured ~560M CPU instructions against a 100M budget (see `NOTES.md`), so BN254 verification doesn't fit at all. This is the single biggest deviation from a "default" ZK stack and is documented in detail in `NOTES.md`.
+- **BLS12-381** throughout — not the more common BN254/bn128. Stellar's Soroban host only accelerates BLS12-381 pairing operations; a pure-Rust BN254 pairing check measured ~560M CPU instructions against a 100M budget ([ADR 005](docs/adr/005-bls12-381-curve-choice.md), [contracts/BENCHMARKS.md](contracts/BENCHMARKS.md)), so BN254 verification doesn't fit at all.
 - **Commitment:** `leaf = Poseidon(identityNullifier, identitySecret)`.
 - **Nullifier:** `nullifierHash = Poseidon(identityNullifier, externalNullifier)` — Poseidon is used here and for the Merkle tree because it's cheap _inside the circuit's constraint system_.
-- **Round tag:** `externalNullifier = SHA256(circle_id, round) mod r` — **not** Poseidon. This binding happens outside the circuit (in the contract and in the client, not inside the SNARK), where Soroban has a native accelerated SHA-256 and no native Poseidon at all, so nothing is gained by matching the circuit's hash choice there. Deliberate and permanent, not a placeholder — see `NOTES.md`.
-- **Public signal order:** `[nullifierHash, root, externalNullifier]` (circuit output first, then declared public inputs, in that order) — this is what circom/snarkjs actually emit, not the `[root, externalNullifier, nullifierHash]` a naive reading might assume. Circuit, contract, and client all agree on this order.
+- **Round tag:** `externalNullifier = SHA256(circle_id, round) mod r` — **not** Poseidon. This binding happens outside the circuit (in the contract and in the client, not inside the SNARK), where Soroban has a native accelerated SHA-256 and no native Poseidon at all, so nothing is gained by matching the circuit's hash choice there. Deliberate and permanent, not a placeholder — [docs/wire-format.md](docs/wire-format.md).
+- **Public signal order:** `[nullifierHash, root, externalNullifier, recipientHash]` — circuit output first, then declared public inputs. Circuit, contract, and client must agree ([docs/wire-format.md](docs/wire-format.md), [ADR 006](docs/adr/006-recipient-binding.md)).
+- **Poseidon constants:** [docs/poseidon-provenance.md](docs/poseidon-provenance.md).
 - **Field:** BLS12-381 scalar field throughout (client, contract, circuit).
 
 ## Run it
@@ -292,7 +294,7 @@ Runs a full round against testnet for real: creates a 5-member circle, funds it 
 | `--reuse-circle <id>` | Skip circle creation; run against an existing circle |
 | `--verbose` | Echo each RPC/curl interaction for debugging |
 
-> This script shells out to `curl` for friendbot/Horizon calls rather than using `fetch()` — see `NOTES.md` if you're curious why. Run it in the foreground (not backgrounded) for the same reason.
+> Run `npm run e2e` in the foreground when debugging hangs — see [docs/canary.md](docs/canary.md). HTTP client choice is documented historically in [NOTES.md](NOTES.md) Phase 4.
 
 ### 6. Browser demo
 
@@ -329,7 +331,7 @@ sharibo/
 ├── scripts/smoke.ts     read-only deployment health check (no transactions)
 ├── app/                 React + Vite browser demo
 ├── README.md            this file
-├── NOTES.md             the raw build/decision log — what was discovered, when, and why
+├── NOTES.md             historical append-only build log (not the authority for current invariants)
 ├── full_product_breakdown.md  every facet of the system, in detail
 └── docs/hackathon/hackathon_demo_script.md   demo video script (motion + voiceover)
 ```

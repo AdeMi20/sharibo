@@ -91,10 +91,9 @@ async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
   return result;
 }
 
-// Node's own fetch()/undici hung indefinitely against these two endpoints in
-// this environment even with AbortSignal.timeout set, while plain `curl`
-// consistently worked in seconds (see NOTES.md) — so these two HTTP calls
-// specifically shell out to curl rather than use fetch.
+// Historical: fetch hung when the script was backgrounded by certain tooling
+// (see docs/canary.md and NOTES.md Phase 4). These calls use curl today;
+// run e2e in the foreground per docs/canary.md when debugging hangs.
 async function curlGet(url: string): Promise<string> {
   verbose("curl GET", url);
   const { stdout } = await execFileAsync("curl", ["-s", "--max-time", "15", url]);

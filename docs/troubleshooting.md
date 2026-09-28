@@ -320,7 +320,7 @@ almost certainly in the encoding, not the cryptography. Common causes:
 2. Confirm the VK on-chain matches `circuits/verification_key.json` — re-deploy with
    a fresh `verificationKeyToContractFormat(vkJson)` call if in doubt.
 3. Add a temporary log of `publicSignals` just before `claim()` and verify the order
-   is `[nullifierHash, root, externalNullifier]`.
+   is `[nullifierHash, root, externalNullifier, recipientHash]` ([wire-format.md](wire-format.md)).
 
 **Fix**
 

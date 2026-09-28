@@ -7,7 +7,7 @@ Plain-language definitions of cryptographic terms used throughout the Sharibo re
 ### BLS12-381
 
 A specific elliptic curve — think of it as the mathematical "field" on which Sharibo's zero-knowledge proofs run. Most ZK projects use BN254, but Stellar's Soroban blockchain natively accelerates BLS12-381 pairing operations, which is what makes on-chain verification actually fit within the transaction budget (BN254 doesn't).  
-→ [`contracts/sharibo/src/lib.rs`](../contracts/sharibo/src/lib.rs) · [`NOTES.md`](../NOTES.md)
+→ [`contracts/sharibo/src/lib.rs`](../contracts/sharibo/src/lib.rs) · [ADR 005](adr/005-bls12-381-curve-choice.md)
 
 ### Circom
 
@@ -62,7 +62,7 @@ A hash function designed specifically for zero-knowledge circuits — it uses fa
 ### Powers-of-Tau
 
 The first phase of a trusted setup ceremony: a multi-party computation that produces "toxic waste" parameters which, if not destroyed, could allow forging fake proofs. Sharibo currently uses a single-party setup (fine for a demo, insufficient for production).  
-→ [`circuits/scripts/setup.sh`](../circuits/scripts/setup.sh) · [`circuits/SETUP_TRANSCRIPT.md`](../circuits/SETUP_TRANSCRIPT.md)
+→ [`circuits/scripts/setup.sh`](../circuits/scripts/setup.sh) · [`circuits/SETUP_TRANSCRIPT.md`](../circuits/SETUP_TRANSCRIPT.md) · planned multi-party run [ceremony.md](ceremony.md)
 
 ### Proof (ZK proof)
 
@@ -71,8 +71,8 @@ A small piece of data (in Groth16: three elliptic curve points A, B, C) that pro
 
 ### Public inputs / Public signals
 
-The values that both the prover and verifier agree on publicly. In Sharibo: `[nullifierHash, root, externalNullifier]`. The proof demonstrates that some private inputs (identityNullifier, identitySecret, Merkle path) satisfy the circuit *given these public values*.  
-→ [`contracts/sharibo/src/lib.rs`](../contracts/sharibo/src/lib.rs)
+The values that both the prover and verifier agree on publicly. In Sharibo: `[nullifierHash, root, externalNullifier, recipientHash]` (four signals). The proof demonstrates that some private inputs (identityNullifier, identitySecret, Merkle path) satisfy the circuit *given these public values*.  
+→ [wire-format.md](wire-format.md) · [`contracts/sharibo/src/lib.rs`](../contracts/sharibo/src/lib.rs)
 
 ### Scalar field (BLS12-381 scalar field)
 
