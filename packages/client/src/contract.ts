@@ -311,16 +311,20 @@ export async function estimateClaimFee(
     externalNullifier: bigint;
     proof: ContractProof;
   },
+  retryPolicy: RetryPolicy = DEFAULT_RETRY_POLICY,
 ): Promise<FeeEstimate | null> {
   try {
-    const tx: ContractTx = await withRetry(() =>
-      client.claim({
-        circle_id: args.circleId,
-        recipient: args.recipient,
-        nullifier_hash: args.nullifierHash,
-        external_nullifier: args.externalNullifier,
-        proof: args.proof,
-      }),
+    const tx: ContractTx = await withRetry(
+      () =>
+        client.claim({
+          circle_id: args.circleId,
+          recipient: args.recipient,
+          nullifier_hash: args.nullifierHash,
+          external_nullifier: args.externalNullifier,
+          proof: args.proof,
+        }),
+      retryPolicy,
+      client.emitter,
     );
     // tx has already been simulated by the SDK at this point.
     const sim = tx.simulation as Api.SimulateTransactionResponse | undefined;
@@ -566,14 +570,30 @@ export async function getCircleCount(
 }
 
 /** Pure read: the current round number for `circleId`. */
-export async function getRound(client: ShariboClient, circleId: bigint): Promise<number> {
-  const tx: ContractTx = await withRetry(() => client.get_round({ circle_id: circleId }));
+export async function getRound(
+  client: ShariboClient,
+  circleId: bigint,
+  retryPolicy: RetryPolicy = DEFAULT_RETRY_POLICY,
+): Promise<number> {
+  const tx: ContractTx = await withRetry(
+    () => client.get_round({ circle_id: circleId }),
+    retryPolicy,
+    client.emitter,
+  );
   return Number(tx.result);
 }
 
 /** Pure read: the current pot balance (in token stroops) for `circleId`. */
-export async function getPot(client: ShariboClient, circleId: bigint): Promise<bigint> {
-  const tx: ContractTx = await withRetry(() => client.get_pot({ circle_id: circleId }));
+export async function getPot(
+  client: ShariboClient,
+  circleId: bigint,
+  retryPolicy: RetryPolicy = DEFAULT_RETRY_POLICY,
+): Promise<bigint> {
+  const tx: ContractTx = await withRetry(
+    () => client.get_pot({ circle_id: circleId }),
+    retryPolicy,
+    client.emitter,
+  );
   return BigInt(tx.result);
 }
 
@@ -585,8 +605,13 @@ export async function getPot(client: ShariboClient, circleId: bigint): Promise<b
 export async function getStatus(
   client: ShariboClient,
   circleId: bigint,
+  retryPolicy: RetryPolicy = DEFAULT_RETRY_POLICY,
 ): Promise<{ round: number; pot: bigint; target: bigint; cancelled: boolean }> {
-  const tx: ContractTx = await withRetry(() => client.get_status({ circle_id: circleId }));
+  const tx: ContractTx = await withRetry(
+    () => client.get_status({ circle_id: circleId }),
+    retryPolicy,
+    client.emitter,
+  );
   const [round, pot, target, cancelled] = tx.result as
     [bigint | number, bigint | string, bigint | string, boolean];
   return {
@@ -598,8 +623,16 @@ export async function getStatus(
 }
 
 /** Pure read: the ordered list of addresses that funded the current round. */
-export async function getContributors(client: ShariboClient, circleId: bigint): Promise<string[]> {
-  const tx: ContractTx = await withRetry(() => client.get_contributors({ circle_id: circleId }));
+export async function getContributors(
+  client: ShariboClient,
+  circleId: bigint,
+  retryPolicy: RetryPolicy = DEFAULT_RETRY_POLICY,
+): Promise<string[]> {
+  const tx: ContractTx = await withRetry(
+    () => client.get_contributors({ circle_id: circleId }),
+    retryPolicy,
+    client.emitter,
+  );
   return tx.result as string[];
 }
 
