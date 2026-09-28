@@ -304,8 +304,8 @@ These must agree, byte-for-byte or value-for-value, across circuit, contract, an
 - **Commitment:** `leaf = Poseidon(identityNullifier, identitySecret)`.
 - **Nullifier:** `nullifierHash = Poseidon(identityNullifier, externalNullifier)`.
 - **Round tag:** `externalNullifier = SHA256(circle_id, round) mod r` — SHA-256, specifically _not_ Poseidon (see §7).
-- **Public signal order:** `[nullifierHash, root, externalNullifier, recipientHash]` — this is what circom/snarkjs actually emit (circuit _output_ first, then declared public _inputs_, in source order), not the more intuitive-looking `[root, externalNullifier, nullifierHash]` a naive reading of the spec would produce. This was discovered empirically by inspecting a real `public.json`, not assumed.
-- **Wire format:** `G1Affine` = 96 bytes (`be(X) || be(Y)`), `G2Affine` = 192 bytes (`be(X_c1) || be(X_c0) || be(Y_c1) || be(Y_c0)`) — Soroban's documented format, which happens to match the widely-standardized ("ZCash-style") BLS12-381 serialization used across the ecosystem.
+- **Public signal order:** `[nullifierHash, root, externalNullifier, recipientHash]` — four signals; see [docs/wire-format.md](docs/wire-format.md) (circuit _output_ first, then public _inputs_ in source order). Discovered empirically by inspecting a real `public.json`, not assumed.
+- **Wire format:** `G1Affine` = 96 bytes (`be(X) || be(Y)`), `G2Affine` = 192 bytes (`be(X_c1) || be(X_c0) || be(Y_c1) || be(Y_c0)`) — authoritative detail in [docs/wire-format.md](docs/wire-format.md) (Soroban's documented format, matching ZCash-style BLS12-381 serialization).
 
 ## 11. Security properties
 
@@ -347,7 +347,7 @@ The original build spec assumed a fairly standard BN254 + Poseidon-everywhere ZK
 1. **BN254 → BLS12-381** (§6) — the single biggest pivot, driven by a hard CPU-budget wall, not a preference.
 2. **Poseidon constants sourced from a third party** (§6) — a direct consequence of #1; circomlib doesn't have BLS12-381 constants.
 3. **`compute_external_nullifier` uses SHA-256 permanently, not Poseidon** (§7) — a deliberate simplification once it was clear there's no native Poseidon host function to make matching hash choices worthwhile outside the circuit.
-4. **Public signal order is `[nullifierHash, root, externalNullifier, recipientHash]`**, discovered empirically, not `[root, externalNullifier, nullifierHash]` as a first reading of the spec might suggest (§10).
+4. **Public signal order** is `[nullifierHash, root, externalNullifier, recipientHash]` (#266); full order in [docs/wire-format.md](docs/wire-format.md) (§10) — discovered empirically, not `[root, externalNullifier, nullifierHash]`.
 5. **`stellar-sdk`'s `TokenInterface::transfer` takes a `MuxedAddress`, not `Address`**, in the currently-installed SDK version — handled via the standard `From<Address> for MuxedAddress` conversion, transparent at call sites.
 6. **Two browser-runtime-only bugs** (`Buffer`/`global` and `process.browser`) found by reading dependency source rather than by click-testing (§9, §18).
 

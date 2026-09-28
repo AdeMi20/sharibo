@@ -39,11 +39,11 @@ app/ (browser)  ──prove──▶  packages/client/  ◀──prove──  sc
 
 These are non-negotiable across all the directories touched by a change — see [README invariants](../README.md#invariants-held-across-circuit--contract--client):
 
-- **BLS12-381 everywhere.** Soroban only accelerates BLS12-381 pairing operations; a pure-Rust BN254 check exceeds the 100M instruction budget. Every layer must agree.
+- **BLS12-381 everywhere.** Soroban only accelerates BLS12-381 pairing operations; a pure-Rust BN254 check exceeds the 100M instruction budget ([ADR 005](adr/005-bls12-381-curve-choice.md)). Every layer must agree.
 - **Commitment:** `leaf = Poseidon(identityNullifier, identitySecret)`.
 - **Nullifier:** `nullifierHash = Poseidon(identityNullifier, externalNullifier)`.
 - **Round tag:** `externalNullifier = SHA256(circle_id, round) mod r`, computed outside the circuit.
-- **Public signal order:** `[nullifierHash, root, externalNullifier, recipientHash]` — circuit, contract, and client must all agree. Manifest: [`test-vectors/public-signals.json`](../test-vectors/public-signals.json).
+- **Public signal order:** `[nullifierHash, root, externalNullifier, recipientHash]` — circuit, contract, and client must all agree ([wire-format.md](wire-format.md); manifest: [`test-vectors/public-signals.json`](../test-vectors/public-signals.json)).
 
 ## Where to dig deeper
 

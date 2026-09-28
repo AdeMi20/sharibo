@@ -9,7 +9,7 @@ If you are coming from the finance / ROSCA side rather than cryptography, start 
 ### BLS12-381
 
 A specific elliptic curve — think of it as the mathematical "field" on which Sharibo's zero-knowledge proofs run. Most ZK projects use BN254, but Stellar's Soroban blockchain natively accelerates BLS12-381 pairing operations, which is what makes on-chain verification actually fit within the transaction budget (BN254 doesn't).  
-→ [`contracts/BENCHMARKS.md`](../contracts/BENCHMARKS.md) · [`NOTES.md`](../NOTES.md)
+→ [`contracts/BENCHMARKS.md`](../contracts/BENCHMARKS.md) · [ADR 005](adr/005-bls12-381-curve-choice.md) · [`contracts/sharibo/src/lib.rs`](../contracts/sharibo/src/lib.rs)
 
 ### Circom
 
@@ -78,8 +78,8 @@ A hash function designed specifically for zero-knowledge circuits — it uses fa
 
 ### Powers-of-Tau (ptau)
 
-The first phase of a trusted setup ceremony: a multi-party computation that produces parameters later turned into a circuit-specific proving key. Sharibo's pipeline downloads or generates a `.ptau`, then runs the circuit-specific phase to produce the `.zkey`.  
-→ [`circuits/scripts/setup.sh`](../circuits/scripts/setup.sh) · [`circuits/SETUP_TRANSCRIPT.md`](../circuits/SETUP_TRANSCRIPT.md)
+The first phase of a trusted setup ceremony: a multi-party computation that produces parameters later turned into a circuit-specific proving key. Sharibo's pipeline downloads or generates a `.ptau`, then runs the circuit-specific phase to produce the `.zkey`. Currently a **single-party** demo setup (insufficient for production).  
+→ [`circuits/scripts/setup.sh`](../circuits/scripts/setup.sh) · [`circuits/SETUP_TRANSCRIPT.md`](../circuits/SETUP_TRANSCRIPT.md) · planned multi-party run [ceremony.md](ceremony.md)
 
 ### Proof (ZK proof)
 
@@ -88,8 +88,8 @@ A small piece of data (in Groth16: three elliptic curve points A, B, C) that pro
 
 ### Public inputs / Public signals
 
-The values that both the prover and verifier agree on publicly. In Sharibo the ordered set is `[nullifierHash, root, externalNullifier, recipientHash]` (see [`test-vectors/public-signals.json`](../test-vectors/public-signals.json)). `recipientHash` is the SHA-256-derived hash of the payout address, supplied so the proof commits to where the pot goes. The proof demonstrates that some private inputs (identityNullifier, identitySecret, Merkle path) satisfy the circuit *given these public values*.  
-→ [`docs/adr/006-recipient-binding.md`](adr/006-recipient-binding.md) · [`contracts/sharibo/src/lib.rs`](../contracts/sharibo/src/lib.rs)
+The values that both the prover and verifier agree on publicly. In Sharibo the ordered set is `[nullifierHash, root, externalNullifier, recipientHash]` (see [wire-format.md](wire-format.md) and [`test-vectors/public-signals.json`](../test-vectors/public-signals.json)). `recipientHash` is the SHA-256-derived hash of the payout address, supplied so the proof commits to where the pot goes. The proof demonstrates that some private inputs (identityNullifier, identitySecret, Merkle path) satisfy the circuit *given these public values*.  
+→ [wire-format.md](wire-format.md) · [`docs/adr/006-recipient-binding.md`](adr/006-recipient-binding.md) · [`contracts/sharibo/src/lib.rs`](../contracts/sharibo/src/lib.rs)
 
 ### recipientHash
 
