@@ -23,7 +23,9 @@
     "dev": "vite",
     "dev:full": "npm run sync-circuit && vite",
     "build": "npm run sync-circuit && vite build",
+    "build:analyze": "npm run sync-circuit && ANALYZE=1 vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {

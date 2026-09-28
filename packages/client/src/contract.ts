@@ -220,15 +220,20 @@ export function explorerTxUrl(hash: string, networkPassphrase: string): string |
 function populateTxResult<T>(
   result: T,
   sent: { sendTransactionResponse: { hash: string }; getTransactionResponse?: { ledger?: number; feeCharged?: string } },
+  emitter?: SdkEventEmitter,
 ): TxResult<T> {
+  const hash = sent.sendTransactionResponse.hash;
+  emitter?.emit({ type: "tx:submitted", hash });
+  if (sent.getTransactionResponse) {
+    emitter?.emit({ type: "tx:confirmed", hash });
+  }
   return {
     result,
-    hash: sent.sendTransactionResponse.hash,
+    hash,
     ledger: sent.getTransactionResponse?.ledger,
     feeCharged: sent.getTransactionResponse?.feeCharged,
   };
 }
-
 /**
  * Estimates the fee for a claim transaction by running a dry-run simulation.
  *
@@ -333,7 +338,7 @@ export async function createCircle(
       fee_recipient: args.feeRecipient,
     }), retryPolicy, client.emitter);
     const sent = await tx.signAndSend();
-    return populateTxResult(sent.result as bigint, sent);
+    return populateTxResult(sent.result as bigint, sent, client.emitter);
   } catch (err) {
     throw decodeContractError(err);
   }
@@ -356,7 +361,7 @@ export async function fund(
   try {
     const tx: ContractTx = await withRetry(() => client.fund({ circle_id: args.circleId, from: args.from }), retryPolicy, client.emitter);
     const sent = await tx.signAndSend();
-    return populateTxResult(undefined, sent);
+    return populateTxResult(undefined, sent, client.emitter);
   } catch (err) {
     throw decodeContractError(err);
   }
@@ -395,7 +400,7 @@ export async function claim(
       proof: args.proof,
     }), retryPolicy, client.emitter);
     const sent = await tx.signAndSend();
-    return populateTxResult(undefined, sent);
+    return populateTxResult(undefined, sent, client.emitter);
   } catch (err) {
     throw decodeContractError(err);
   }
@@ -579,7 +584,7 @@ export async function cancelCircle(
   try {
     const tx: ContractTx = await withRetry(() => client.cancel_circle({ circle_id: args.circleId }), retryPolicy, client.emitter);
     const sent = await tx.signAndSend();
-    return populateTxResult(undefined, sent);
+    return populateTxResult(undefined, sent, client.emitter);
   } catch (err) {
     throw decodeContractError(err);
   }

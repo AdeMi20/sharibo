@@ -301,7 +301,7 @@ almost certainly in the encoding, not the cryptography. Common causes:
   coordinate order or using the compressed (48/96 byte) form causes a silent
   mismatch.
 - **Wrong public signal order** — the contract expects `[nullifierHash, root,
-  externalNullifier]` in that order. If `publicSignals` is passed in a different
+  externalNullifier, recipientHash]` in that order. If `publicSignals` is passed in a different
   order the encoded `pi_a`/`pi_b`/`pi_c` will be correct but the IC combination
   will mismatch on-chain.
 - **Mismatched verification key** — the VK stored in the contract at
@@ -320,7 +320,7 @@ almost certainly in the encoding, not the cryptography. Common causes:
 2. Confirm the VK on-chain matches `circuits/verification_key.json` — re-deploy with
    a fresh `verificationKeyToContractFormat(vkJson)` call if in doubt.
 3. Add a temporary log of `publicSignals` just before `claim()` and verify the order
-   is `[nullifierHash, root, externalNullifier]`.
+   is `[nullifierHash, root, externalNullifier, recipientHash]`.
 
 **Fix**
 

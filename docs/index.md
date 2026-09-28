@@ -28,6 +28,9 @@ each covers and where to find it.
 | File | Description |
 |---|---|
 | [`architecture.md`](architecture.md) | Detailed version of the README's repository structure: directory ownership, toolchains, and end-to-end data flow |
+| [`observability.md`](observability.md) | SDK `SdkEvent` taxonomy (`onEvent`) for retries, proofs, artifacts, transactions |
+| [`deployment.md`](deployment.md) | How the live browser demo is built and manually deployed to Vercel |
+| [`glossary.md`](glossary.md) | Plain-language crypto + ROSCA terms |
 
 ## Architecture decision records (`docs/adr/`)
 

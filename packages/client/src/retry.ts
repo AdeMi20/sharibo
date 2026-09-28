@@ -22,7 +22,7 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
   baseDelayMs: 500,
 };
 
-function isTransientError(error: unknown): boolean {
+export function isTransientError(error: unknown): boolean {
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
   return (
     message.includes("429") ||
@@ -39,7 +39,7 @@ function isTransientError(error: unknown): boolean {
 /**
  * Runs `fn` (a simulation/preparation step) with exponential backoff + jitter
  * on transient failures. Non-transient errors and errors past the policy's
- * retry budget surface immediately.
+ * retry budget surface immediately (after emitting `rpc:failure`).
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
@@ -55,7 +55,10 @@ export async function withRetry<T>(
       emitter?.emit({ type: "rpc:success", duration: Date.now() - startedAt });
       return result;
     } catch (error) {
-      if (!isTransientError(error) || attempt >= policy.maxRetries) throw error;
+      if (!isTransientError(error) || attempt >= policy.maxRetries) {
+        emitter?.emit({ type: "rpc:failure", attempt, error });
+        throw error;
+      }
       attempt++;
       const jitter = 0.5 + Math.random() * 0.5;
       const delay = policy.baseDelayMs * 2 ** (attempt - 1) * jitter;

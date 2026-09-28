@@ -44,7 +44,7 @@ These are non-negotiable across all the directories touched by a change — see 
 - **Commitment:** `leaf = Poseidon(identityNullifier, identitySecret)`.
 - **Nullifier:** `nullifierHash = Poseidon(identityNullifier, externalNullifier)`.
 - **Round tag:** `externalNullifier = SHA256(circle_id, round) mod r`, computed outside the circuit.
-- **Public signal order:** `[nullifierHash, root, externalNullifier]` — circuit, contract, and client must all agree.
+- **Public signal order:** `[nullifierHash, root, externalNullifier, recipientHash]` — circuit, contract, and client must all agree. Manifest: [`test-vectors/public-signals.json`](../test-vectors/public-signals.json).
 
 ## Where to dig deeper
 
