@@ -12,8 +12,8 @@ set working-directory := '.'
 # ── Doctor ───────────────────────────────────────────────────────────────────
 
 # Run the toolchain doctor script (checks Rust, stellar CLI, Node, circom, just)
-doctor:
-    npm run doctor --workspace=scripts
+doctor *ARGS:
+    npm run doctor --workspace=scripts -- {{ARGS}}
 
 # ── Circuits ──────────────────────────────────────────────────────────────────
 

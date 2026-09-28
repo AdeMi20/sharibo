@@ -223,6 +223,16 @@ Install the Rust target after installing Rust:
 rustup target add wasm32v1-none
 ```
 
+After installing the tools above, run the doctor to verify your setup before continuing:
+
+```bash
+just doctor
+# or, without just:
+npm run doctor --workspace=scripts
+```
+
+The doctor checks the tools above plus `curl`, `.env` validity, circuit test dependencies, the built client SDK, and verified circuit artifacts. It reports what was found vs. required, gives a fix command and troubleshooting link for failures, and exits non-zero only for blocking failures. Run `just doctor --fix` to apply mechanical fixes such as installing the Rust target or building the SDK. See [docs/troubleshooting.md](docs/troubleshooting.md) for the symptom→cause reference that backs each check.
+
 ### 1. Install and configure
 
 ```bash
