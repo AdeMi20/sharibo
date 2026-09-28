@@ -360,12 +360,13 @@ Every one of these is also logged, with more raw detail and the exact commands u
 sharibo/
 ├── circuits/            membership.circom, compile/setup/prove scripts, circuit tests, verification_key.json
 ├── contracts/sharibo/   the Soroban contract (lib.rs) + its test suite (test.rs)
+├── packages/core/       shared crypto primitives
 ├── packages/client/     isomorphic TS SDK: identity.ts, tree.ts, prove.ts, contract.ts
-├── scripts/e2e.ts       full-round Node script against live testnet
+├── scripts/             e2e/smoke helpers + maintenance checkers
 ├── app/                 React + Vite browser demo
+├── docs/                long-form docs + docs/hackathon/ (point-in-time archive)
 ├── README.md            the pitch: what it does, architecture, run steps, honest limitations
 ├── NOTES.md             the raw build/decision log — what was discovered, when, and why
-├── docs/hackathon/hackathon_demo_script.md   60-second demo video script (motion + voiceover)
 └── full_product_breakdown.md  this file
 ```
 

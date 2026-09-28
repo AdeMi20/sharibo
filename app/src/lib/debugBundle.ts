@@ -72,21 +72,13 @@ export interface DebugBundle {
 
 /**
  * Patterns that must never appear in the serialised bundle.
+ * Shared with `scripts/maintenance/check-secrets.mjs` via secret-patterns.mjs
+ * so a regex fix lands in both consumers.
  *
  * - Stellar secret seeds: start with 'S', 56 base-32 chars.
- *   The Stellar SDK encodes secret keys as Strkey with version byte 0x90
- *   → always starts with 'S', always 56 chars, base-32 alphabet A-Z2-7.
- * - Identity scalars: 77-digit decimal bigints that represent field elements
- *   (identityNullifier / identitySecret from generateIdentity()). These are
- *   256-bit numbers, so ≥ 77 decimal digits long.
- *   (2^255 ≈ 5.8e76, so a field element is always ≥ 77 decimal digits.)
+ * - Identity scalars: 77-digit decimal bigints (field elements).
  */
-export const REDACT_PATTERNS: RegExp[] = [
-  // Stellar secret seed: S + 55 chars from base-32 alphabet [A-Z2-7]
-  /S[A-Z2-7]{55}/g,
-  // Large decimal integer (≥77 digits) — field-element sized scalar
-  /\b\d{77,}\b/g,
-];
+export { REDACT_PATTERNS } from "../../../scripts/maintenance/secret-patterns.mjs";
 
 /**
  * Scan a serialised bundle string for patterns that indicate a secret leaked.
