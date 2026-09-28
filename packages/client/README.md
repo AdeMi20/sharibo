@@ -50,6 +50,29 @@ await sdk.claim({
 });
 ```
 
+### TxResult
+
+State-changing calls (`createCircle`, `fund`, `claim`, `cancelCircle`) resolve
+to a `TxResult<T>`: the decoded contract return value in `result`, plus chain
+metadata from `signAndSend()`.
+
+```ts
+const { hash, feeCharged, ledger, explorerUrl } = await sdk.claim({ ... });
+
+console.log("tx:", hash);
+if (feeCharged !== undefined) {
+  // feeCharged is bigint stroops at the SDK boundary
+  console.log("fee:", feeCharged.toString());
+}
+if (ledger !== undefined) {
+  console.log("ledger:", ledger);
+}
+// explorerUrl is set when the client was connected with a known passphrase
+if (explorerUrl) {
+  window.open(explorerUrl);
+}
+```
+
 Signing a claim still needs a ZK proof. Proving and identity math are separate
 **stateless** free functions on the same package — the SDK is for contract
 interaction only:

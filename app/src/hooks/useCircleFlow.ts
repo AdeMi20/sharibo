@@ -256,7 +256,7 @@ export function useCircleFlow() {
       setClaimResult({
         recipient: recipient.publicKey(),
         hash,
-        feeCharged,
+        feeCharged: feeCharged?.toString(),
         feeEstimate: estimate ?? undefined,
       });
 
