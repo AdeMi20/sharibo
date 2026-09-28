@@ -12,8 +12,6 @@ import {
   generateIdentity,
   computeExternalNullifier,
   MerkleTree,
-  generateProof,
-  verifyProofLocally,
   verificationKeyToContractFormat,
   connect,
   connectReadOnly,
@@ -753,7 +751,7 @@ export default function App() {
       setCancelled(circle.cancelled);
       setFeeBps(circle.fee_bps ?? 0);
       setFeeRecipient(circle.fee_recipient ?? "");
-      
+
       // Update member funded status based on on-chain contributors
       setMembers((prev) =>
         prev.map((m) => {
@@ -836,7 +834,7 @@ export default function App() {
       payoutHeadingRef.current?.focus();
     }
   }, [claimResult]);
-  
+
   // When the claim step becomes available, pre-check each member's nullifier
   // against `has_claimed` so we can mark ineligible members immediately
   // (avoids generating a slow proof only to be rejected on-chain).
@@ -928,7 +926,7 @@ export default function App() {
     setCirclePhase("loading");
     setContributionXlm(parsed.contributionXlm);
     setAdmin(Keypair.fromSecret(parsed.adminSecret));
-    
+
     const loadedMembers = parsed.members.map((m: any) => ({
       keypair: Keypair.fromSecret(m.secret),
       identity: m.identity,
@@ -938,7 +936,7 @@ export default function App() {
       pending: false,
     }));
     setMembers(loadedMembers);
-    
+
     const newTree = MerkleTree.create(
       LEVELS,
       loadedMembers.map((m: any) => m.identity.commitment)
@@ -953,10 +951,10 @@ export default function App() {
     setNullifierHash(parsed.nullifierHash);
     setClaimResult(parsed.claimResult);
     setRejection(parsed.rejection);
-    
+
     setScreen("circle");
     setResumePrompt(null);
-    
+
     // Sync from on-chain after loading state
     setTimeout(() => syncFundingState(), 100);
     setCirclePhase("ready");
@@ -1037,23 +1035,23 @@ export default function App() {
       ]);
       const m = members[i];
       await fundWithFriendbot(m.keypair.publicKey());
-      
+
       // Set optimistic pending state
       setMembers((prev) =>
         prev.map((mm, idx) =>
           idx === i ? { ...mm, pending: true } : mm,
         ),
       );
-      
+
       const memberClient = await connect(NETWORK, m.keypair);
       const { hash } = await fund(memberClient, {
         circleId,
         from: m.keypair.publicKey(),
       });
-      
+
       // Sync with on-chain state after submission
       await syncFundingState();
-      
+
       // Update fund hash for the successful transaction
       setMembers((prev) =>
         prev.map((mm, idx) =>
@@ -1084,7 +1082,7 @@ export default function App() {
       }
 
       const networkRes = await getNetworkDetails();
-      
+
       // Check for network mismatch between wallet and app config
       const mismatch = checkNetworkMatch(networkRes.network, NETWORK.networkPassphrase);
       if (mismatch) {
@@ -1100,7 +1098,7 @@ export default function App() {
       if (!pubKey) {
         throw new Error(t("error.getAddress"));
       }
-      
+
       const freighterSigner = {
         publicKey: pubKey,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1142,7 +1140,7 @@ export default function App() {
 
       // Sync with on-chain state after submission
       await syncFundingState();
-      
+
       // Update fund hash and freighter key for the successful transaction
       setMembers((prev) =>
         prev.map((mm, idx) => (idx === i ? { ...mm, fundHash: hash, freighterKey: pubKey } : mm)),
@@ -1174,9 +1172,10 @@ export default function App() {
     setRejection(null);
     setBusy(t("busy.claiming"));
     try {
-      const [{ Keypair }, { computeExternalNullifier, generateProof, verifyProofLocally, connect, claim, getCircle, hasClaimed }] = await Promise.all([
+      const [{ Keypair }, { computeExternalNullifier, connect, claim, getCircle, hasClaimed }, { generateProof, verifyProofLocally }] = await Promise.all([
         import("@stellar/stellar-sdk"),
-        import("@sharibo/client")
+        import("@sharibo/client"),
+        import("@sharibo/client/prove"),
       ]);
 
       if (signal.aborted) return;
@@ -1330,22 +1329,22 @@ export default function App() {
   async function doCancelCircle() {
     if (!admin || circleId === null) return;
     setError(null);
-    
+
     const refundCount = onChainContributors.length;
     const refundTotal = (Number(pot) / 1e7).toFixed(1);
-    
+
     const confirmed = window.confirm(
       t("cancel.confirmation", { count: refundCount, total: refundTotal })
     );
-    
+
     if (!confirmed) return;
-    
+
     setBusy(t("cancel.busy"));
     try {
       const { connect, cancelCircle } = await import("@sharibo/client");
       const adminClient = await connect(NETWORK, admin);
       await cancelCircle(adminClient, { circleId });
-      
+
       // Sync with on-chain state after cancellation
       await syncFundingState();
     } catch (e) {
@@ -1388,7 +1387,7 @@ export default function App() {
             You are offline. Network actions are paused — reconnect to start or retry a circle.
           </div>
         )}
-                <div className={`${styles.card} ${styles.hero}`}>
+        <div className={`${styles.card} ${styles.hero}`}>
           <LanguageSwitcher className={styles.languageSwitcherHero} />
           <div className={styles.namewall}>
             {NAMES.map((n) => (
@@ -1518,68 +1517,68 @@ export default function App() {
               {cancelled && ` · ${t("cancel.cancelled")}`}
             </p>
 
-        {cancelled && (
-          <div className="callout" style={{ backgroundColor: "var(--color-warning-bg)", color: "var(--color-warning-text)" }}>
-            <strong>{t("cancel.cancelled")}</strong>
-            <p>{t("cancel.cancelledMessage")}</p>
-          </div>
-        )}
+            {cancelled && (
+              <div className="callout" style={{ backgroundColor: "var(--color-warning-bg)", color: "var(--color-warning-text)" }}>
+                <strong>{t("cancel.cancelled")}</strong>
+                <p>{t("cancel.cancelledMessage")}</p>
+              </div>
+            )}
 
-        {!cancelled && admin && (
-          <div className="row" style={{ justifyContent: "flex-end", marginTop: "1rem" }}>
-            <button
-              className="btn btn-danger btn-small"
-              disabled={!!busy || onChainContributors.length === 0}
-              onClick={doCancelCircle}
-              title="Cancel this circle and refund all contributors"
-            >
-              {t("cancel.title")}
-            </button>
-          </div>
-        )}
-
-        <h2>Fund</h2>
-        <div className={styles.members}>
-          {members.map((m, i) => (
-            <div key={i} className={`member ${m.funded ? "funded" : ""} ${m.pending ? "pending" : ""}`}>
-              <span className="member-addr">
-                {t("fund.memberLabel", { index: i + 1 })} · {short(m.keypair.publicKey())}
-                <CopyButton
-                  value={m.keypair.publicKey()}
-                  label={t("fund.memberAddressLabel", { index: i + 1 })}
-                />
-              </span>
-              {m.pending ? (
-                <span className="pending-indicator">⟳ submitting…</span>
-              ) : m.funded ? (
-                <a
-                  className={styles.link}
-                  href={explorerTx(m.fundHash!)}
-                  target="_blank"
-                  rel="noreferrer"
+            {!cancelled && admin && (
+              <div className="row" style={{ justifyContent: "flex-end", marginTop: "1rem" }}>
+                <button
+                  className="btn btn-danger btn-small"
+                  disabled={!!busy || onChainContributors.length === 0}
+                  onClick={doCancelCircle}
+                  title="Cancel this circle and refund all contributors"
                 >
-                  {t("fund.fundedLink")}
-                </a>
-              ) : (
-                <div className={styles.row}>
-                  <button
-                    className={`${styles.btn} ${styles.btnSmall}`}
-                    disabled={!online || !!busy || round > 0}
-                    onClick={() => fundMember(i)}
-                  >
-                    {t("fund.demoButton", { amount: contributionXlm })}
-                  </button>
-                  {hasFreighter && (
-                    <button
-                      className={`${styles.btn} ${styles.btnSmall}`}
-                      disabled={!online || !!busy || round > 0}
-                      onClick={() => fundWithFreighter(i)}
+                  {t("cancel.title")}
+                </button>
+              </div>
+            )}
+
+            <h2>Fund</h2>
+            <div className={styles.members}>
+              {members.map((m, i) => (
+                <div key={i} className={`member ${m.funded ? "funded" : ""} ${m.pending ? "pending" : ""}`}>
+                  <span className="member-addr">
+                    {t("fund.memberLabel", { index: i + 1 })} · {short(m.keypair.publicKey())}
+                    <CopyButton
+                      value={m.keypair.publicKey()}
+                      label={t("fund.memberAddressLabel", { index: i + 1 })}
+                    />
+                  </span>
+                  {m.pending ? (
+                    <span className="pending-indicator">⟳ submitting…</span>
+                  ) : m.funded ? (
+                    <a
+                      className={styles.link}
+                      href={explorerTx(m.fundHash!)}
+                      target="_blank"
+                      rel="noreferrer"
                     >
-                      {t("fund.freighterButton")}
-                    </button>
+                      {t("fund.fundedLink")}
+                    </a>
+                  ) : (
+                    <div className={styles.row}>
+                      <button
+                        className={`${styles.btn} ${styles.btnSmall}`}
+                        disabled={!online || !!busy || round > 0}
+                        onClick={() => fundMember(i)}
+                      >
+                        {t("fund.demoButton", { amount: contributionXlm })}
+                      </button>
+                      {hasFreighter && (
+                        <button
+                          className={`${styles.btn} ${styles.btnSmall}`}
+                          disabled={!online || !!busy || round > 0}
+                          onClick={() => fundWithFreighter(i)}
+                        >
+                          {t("fund.freighterButton")}
+                        </button>
+                      )}
+                    </div>
                   )}
-                </div>
-              )}
                 </div>
               ))}
             </div>
