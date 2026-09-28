@@ -289,7 +289,6 @@ function networkPassphraseFromClient(client: ShariboClient): string | undefined 
   const pp = client?.networkPassphrase;
   return typeof pp === "string" ? pp : undefined;
 }
-
 /**
  * Estimates the fee for a claim transaction by running a dry-run simulation.
  *

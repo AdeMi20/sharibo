@@ -116,7 +116,10 @@ export async function withRetry<T>(
       emitter?.emit({ type: "rpc:success", duration: Date.now() - startedAt });
       return result;
     } catch (error) {
-      if (!isTransientError(error) || attempt >= policy.maxRetries) throw error;
+      if (!isTransientError(error) || attempt >= policy.maxRetries) {
+        emitter?.emit({ type: "rpc:failure", attempt, error });
+        throw error;
+      }
       attempt++;
       const delay = computeDelay(policy, attempt);
       emitter?.emit({ type: "rpc:retry", attempt, delay, error });

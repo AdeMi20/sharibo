@@ -196,7 +196,28 @@ browser entry automatically. Node and test runners get the side-effect-free defa
 If you need the background pre-fetch in a browser app that imports the package
 directly (without a bundler resolving the `browser` condition), call
 `prefetchMembershipArtifacts()` explicitly after import. The progress UI lives
-in the app and subscribes via `subscribeToArtifactPrefetch()`.
+in the app and subscribes via `subscribeToArtifactPrefetch()`. Wire the same
+handler into artifact events with `setArtifactOnEvent(onEvent)` or
+`configureArtifacts({ onEvent })`.
+
+## Observability (`onEvent` / `SdkEvent`)
+
+Pass a stable `onEvent` callback on `connect({ …, onEvent })` and
+`generateProof(…, { onEvent })` so retries and proof work are visible to the UI.
+
+`SdkEvent` is an exported discriminated union — switch on `event.type`
+exhaustively. Full table (name, payload, when it fires):
+[docs/observability.md](../../docs/observability.md).
+
+Notable events for a claim spinner:
+
+- `rpc:retry` / `rpc:failure` — transient RPC pain and giving up (#294)
+- `proof:started` / `proof:finished` — local Groth16 work
+- `artifact:started` / `artifact:ready` / `artifact:error` — wasm/zkey download
+- `tx:submitted` / `tx:confirmed` — after `signAndSend`
+
+Keep a bounded buffer on the consumer side; the demo app’s `useSdkEvents()`
+caps at 100 entries and feeds the debug bundle.
 
 ## Retries and observability
 

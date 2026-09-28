@@ -10,6 +10,8 @@
  * The output is formatted markdown — paste directly into a bug report body.
  */
 
+import type { LoggedSdkEvent } from "./sdkEventLog";
+
 // ─── types ──────────────────────────────────────────────────────────────────
 
 export interface BundleNetworkConfig {
@@ -47,6 +49,8 @@ export interface BundleInput {
    * e.g. { artifacts: 1200, proving: 34500, submitting: 3100 }
    */
   timings: Record<string, number>;
+  /** Recent SDK observability events (already detail-redacted by useSdkEvents). */
+  recentEvents?: LoggedSdkEvent[];
   /** browser navigator.userAgent */
   userAgent: string;
 }
@@ -65,6 +69,7 @@ export interface DebugBundle {
   potStroops: string;
   artifactHashes: Record<string, string>;
   timings: Record<string, number>;
+  recentEvents: LoggedSdkEvent[];
   userAgent: string;
 }
 
@@ -122,6 +127,11 @@ export function buildDebugBundle(input: BundleInput): DebugBundle {
     potStroops: input.pot.toString(),
     artifactHashes: { ...input.artifactHashes },
     timings: { ...input.timings },
+    recentEvents: (input.recentEvents ?? []).map((e) => ({
+      type: e.type,
+      at: e.at,
+      detail: e.detail ? { ...e.detail } : undefined,
+    })),
     userAgent: input.userAgent,
   };
 
@@ -161,6 +171,21 @@ export function formatBundleAsMarkdown(bundle: DebugBundle): string {
           .join("\n")
       : "  (not loaded)";
 
+  const eventLines =
+    bundle.recentEvents.length > 0
+      ? bundle.recentEvents
+          .map((e) => {
+            const detail = e.detail
+              ? " " +
+                Object.entries(e.detail)
+                  .map(([k, v]) => `${k}=${v}`)
+                  .join(" ")
+              : "";
+            return `  ${e.at} ${e.type}${detail}`;
+          })
+          .join("\n")
+      : "  (none recorded)";
+
   return [
     "### Sharibo debug bundle",
     "",
@@ -198,6 +223,11 @@ export function formatBundleAsMarkdown(bundle: DebugBundle): string {
     "#### Step timings",
     "```",
     timingLines,
+    "```",
+    "",
+    "#### Recent SDK events",
+    "```",
+    eventLines,
     "```",
   ].join("\n");
 }
