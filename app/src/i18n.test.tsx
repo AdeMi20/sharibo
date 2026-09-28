@@ -17,6 +17,17 @@ import { fileURLToPath } from "node:url";
 import { I18nProvider, useI18n } from "./i18n";
 import en from "./locales/en";
 
+const localeModules = import.meta.glob<{ default: Record<string, string> }>(
+  "./locales/*.ts",
+  { eager: true },
+);
+
+function localeCodes(): string[] {
+  return Object.keys(localeModules)
+    .map((p) => p.match(/\.\/locales\/([a-zA-Z-]+)\.ts$/)?.[1])
+    .filter((code): code is string => Boolean(code));
+}
+
 describe("i18n provider", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -91,6 +102,34 @@ describe("i18n provider", () => {
     );
 
     expect(screen.getByTestId("msg").textContent).toContain("10");
+  });
+
+  it("handles rtl locales correctly", () => {
+    localStorage.setItem("sharibo.locale", "en");
+
+    function TestComponent() {
+      const { setLocale } = useI18n();
+      return (
+        <button onClick={() => setLocale("ar")} data-testid="switch-ar">
+          Switch to AR
+        </button>
+      );
+    }
+
+    render(
+      <I18nProvider>
+        <TestComponent />
+      </I18nProvider>,
+    );
+
+    expect(document.documentElement.dir).toBe("ltr");
+
+    act(() => {
+      screen.getByTestId("switch-ar").click();
+    });
+
+    expect(document.documentElement.lang).toBe("ar");
+    expect(document.documentElement.dir).toBe("rtl");
   });
 
   it("unknown key returns the key itself (safe to render) and warns in DEV", () => {
@@ -171,7 +210,7 @@ describe("i18n provider", () => {
     setItemSpy.mockRestore();
   });
 
-  it("every t(\"…\") call site in app/src resolves to a key in en.ts", () => {
+  it('every t("…") call site in app/src resolves to a key in en.ts', () => {
     const appSrc = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
     const enKeys = new Set(Object.keys(en));
     const keyRe = /\bt\(\s*["'`]([^"'`]+)["'`]/g;
@@ -207,5 +246,45 @@ describe("i18n provider", () => {
     expect(
       [...missing.entries()].map(([key, files]) => `${key} (${files.join(", ")})`),
     ).toEqual([]);
+  });
+
+  // No vitest-axe / axe-core dependency — lightweight smoke: each locale
+  // dictionary can resolve landing keys without throwing.
+  it("each locale dictionary renders landing copy without throwing", () => {
+    localStorage.setItem("sharibo.locale", "en");
+
+    function LandingSmoke() {
+      const { t, locale, setLocale, locales } = useI18n();
+      return (
+        <div>
+          <div data-testid="locale">{locale}</div>
+          <p data-testid="tagline">{t("landing.tagline")}</p>
+          <p data-testid="launch">{t("landing.launch")}</p>
+          {locales.map((code) => (
+            <button key={code} type="button" onClick={() => setLocale(code)} data-testid={`set-${code}`}>
+              {code}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    render(
+      <I18nProvider>
+        <LandingSmoke />
+      </I18nProvider>,
+    );
+
+    for (const code of localeCodes()) {
+      expect(() => {
+        act(() => {
+          screen.getByTestId(`set-${code}`).click();
+        });
+      }).not.toThrow();
+
+      expect(screen.getByTestId("locale").textContent).toBe(code);
+      expect(screen.getByTestId("tagline").textContent?.length).toBeGreaterThan(0);
+      expect(screen.getByTestId("launch").textContent?.length).toBeGreaterThan(0);
+    }
   });
 });
