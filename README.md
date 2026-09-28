@@ -334,7 +334,7 @@ sharibo/
 └── docs/hackathon/hackathon_demo_script.md   demo video script (motion + voiceover)
 ```
 
-Full annotated version (what each file does and why): [breakdown §16](full_product_breakdown.md#16-repository-structure). See also [docs/index.md](docs/index.md) for a complete documentation index.
+Full annotated version (what each file does and why): [breakdown §16](full_product_breakdown.md#16-repository-structure). See also [docs/index.md](docs/index.md) for a complete documentation index and the contributor-friendly [architecture guide](docs/architecture.md).
 
 ## Contributing
 

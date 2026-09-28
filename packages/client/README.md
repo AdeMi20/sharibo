@@ -172,8 +172,8 @@ browser entry automatically. Node and test runners get the side-effect-free defa
 
 If you need the background pre-fetch in a browser app that imports the package
 directly (without a bundler resolving the `browser` condition), call
-`prefetchMembershipArtifacts()` explicitly after import. The progress UI lives
-in the app and subscribes via `subscribeToArtifactPrefetch()`.
+`startArtifactPrefetch()` explicitly after import. The progress UI lives in
+the app and subscribes via `subscribeToArtifactPrefetch()`.
 
 ## Retry Semantics
 
