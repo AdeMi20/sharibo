@@ -2,7 +2,7 @@
 
 Sharibo's README states what the ZK proof is doing and lists honest limitations. This document is the structured version: every property below names the code that enforces it, the test that exercises it, and the specific conditions under which it does *not* hold. Treat this as the canonical list of load-bearing guarantees — if a change touches any of the referenced code, this document should be updated in the same PR.
 
-Scope: `contracts/sharibo/src/lib.rs`, `circuits/membership.template.circom`, `packages/client/`, and the demo entry points that call them (`scripts/e2e.ts`, `app/src/App.tsx`). Same scope as [SECURITY.md](../SECURITY.md).
+Scope: `contracts/sharibo/src/lib.rs`, `circuits/membership.template.circom`, `packages/client/`, `packages/core/`, `app/src/lib/debugBundle.ts`, and the demo entry points that call them (`scripts/e2e.ts`, `app/src/App.tsx`). Same scope as [SECURITY.md](../SECURITY.md).
 
 ## Assets
 
