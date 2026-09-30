@@ -1,5 +1,13 @@
 import { InvalidInputError } from "./errors.js";
 import type { ContractProof, ContractVerificationKey } from "./prove.js";
+import { FR_MODULUS } from "./identity.js";
+
+export function assertInField(value: bigint, name: string): void {
+  if (value < 0n || value >= FR_MODULUS) {
+    throw new InvalidInputError(`${name}: must be in [0, FR_MODULUS), got ${value}`);
+  }
+}
+
 
 export {
   validateContributionAmount,
