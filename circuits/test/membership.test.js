@@ -33,6 +33,12 @@ const LEVELS = Number(process.env.LEVELS || CIRCUITS_CONFIG.levels);
 const CONSTRAINTS_PATH = path.join(__dirname, "..", "constraints.json");
 const COMMITTED_CONSTRAINTS = JSON.parse(fs.readFileSync(CONSTRAINTS_PATH, "utf8"));
 
+// The depths circuits/scripts/check-constraints.cjs recompiles on every CI run
+// (issue #536). This suite only ever builds ONE depth — the configured one — so
+// without pinning the rest here a deleted entry would shrink the guard's remit
+// silently. Asserted in both directions so the two files cannot drift apart.
+const { GUARDED_DEPTHS } = require("../scripts/check-constraints.cjs");
+
 const VECTORS = JSON.parse(
   fs.readFileSync(path.join(__dirname, "..", "..", "test-vectors", "poseidon.json"), "utf8"),
 );
@@ -61,6 +67,35 @@ describe("Sharibo membership circuit (BLS12-381)", function () {
       LEVELS,
       identities.map((id) => id.commitment),
     );
+  });
+
+  // The compile-based assertion below only ever sees ONE depth — whichever one
+  // this run is configured for. The remaining guarded depths (8, 16, 20 — the
+  // ones anyone weighing a larger circle cares about) are checked by
+  // circuits/scripts/check-constraints.cjs in CI. This test is what stops the
+  // two from drifting: a depth dropped from either file fails here instead of
+  // quietly becoming unguarded. The assertion itself is JSON bookkeeping, so it
+  // costs nothing beyond the compile the suite already does.
+  it("circuits/constraints.json records a count for exactly every guarded depth", () => {
+    const committedKeys = Object.keys(COMMITTED_CONSTRAINTS).sort();
+    const expectedKeys = GUARDED_DEPTHS.map(String).sort();
+
+    expect(
+      committedKeys,
+      `circuits/constraints.json records depths [${committedKeys.join(", ")}] but ` +
+        `circuits/scripts/check-constraints.cjs guards [${expectedKeys.join(", ")}]. ` +
+        `Every guarded depth needs a committed count (so the guard has something to ` +
+        `compare against), and every committed count needs to be guarded (so it stays ` +
+        `honest). Update the two files together.`,
+    ).to.deep.equal(expectedKeys);
+
+    for (const key of expectedKeys) {
+      expect(
+        Number.isInteger(COMMITTED_CONSTRAINTS[key]),
+        `circuits/constraints.json entry "${key}" must be an integer constraint count, ` +
+          `got ${JSON.stringify(COMMITTED_CONSTRAINTS[key])}.`,
+      ).to.equal(true);
+    }
   });
 
   // The constraint count drives browser proving time, .zkey size, and

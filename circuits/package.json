@@ -19,6 +19,7 @@
   ],
   "scripts": {
     "check-constants": "node scripts/check-poseidon-constants.mjs",
+    "check-constraints": "node scripts/check-constraints.cjs",
     "compile": "npm run check-constants && bash scripts/compile.sh",
     "setup": "bash scripts/setup.sh",
     "verify-setup": "bash scripts/verify-setup.sh",
