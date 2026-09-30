@@ -64,6 +64,12 @@ an archive is allowed to contain stale claims.
 | [`audit/SCOPE.md`](audit/SCOPE.md) | Draft engagement scope for circuit, setup, contract, client |
 | [`audit/NEGATIVE_TESTS.md`](audit/NEGATIVE_TESTS.md) | Existing negative tests and known gaps |
 
+## Cross-implementation specification
+
+| File | Description |
+|---|---|
+| [`wire-format.md`](wire-format.md) | Authoritative wire-format spec: public signal order, external nullifier derivation, G1/G2 encoding, vk.ic length rules — validated by `test-vectors/wire-format.json` |
+
 ## Circuit docs
 
 | File | Description |
@@ -93,6 +99,8 @@ an archive is allowed to contain stale claims.
 - **Historical build narrative:** [`NOTES.md`](../NOTES.md)
 - **Wire format / public signals:** [`wire-format.md`](wire-format.md)
 - **Deep technical dive:** [`full_product_breakdown.md`](../full_product_breakdown.md)
+- **Wire format / cross-implementation spec:** [`wire-format.md`](wire-format.md)
+- **Verifying the on-chain proof:** [`judges/VERIFY.md`](../judges/VERIFY.md)
 - **Historical verify checklist (archived):** [`hackathon/VERIFY.md`](hackathon/VERIFY.md)
 - **Building the circuit:** [`circuits/README.md`](../circuits/README.md)
 - **Building the contract:** [`contracts/README.md`](../contracts/README.md)

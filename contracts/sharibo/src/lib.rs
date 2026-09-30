@@ -18,6 +18,8 @@ use crate::storage::{load_circle, save_circle, bump_instance, LEDGER_EXTEND_TO, 
 /// against this key. Encodes the trusted-setup output of the Semaphore-style
 /// circuit used by the off-chain prover.
 ///
+/// G1/G2 byte encoding rules are in docs/wire-format.md §3.
+/// ic length rule: ic.len() == number_of_public_signals + 1 (§4).
 /// **Cross-component invariant:** any change to this struct's wire format must
 /// be coordinated with the circuit public signals, contract `public_inputs`,
 /// and SDK encoding. See docs/wire-format.md (#344).
@@ -42,6 +44,7 @@ pub struct VerificationKey {
 /// The three group elements satisfy the standard pairing equation checked by
 /// [`Contract::verify_groth16`].
 ///
+/// G1/G2 byte encoding rules are in docs/wire-format.md §3.
 /// **Cross-component invariant:** any change to this struct's wire format must
 /// be coordinated with the circuit public signals, contract `public_inputs`,
 /// and SDK encoding. See docs/wire-format.md (#344).
@@ -603,11 +606,10 @@ impl Contract {
     ///    entry means this identity already claimed (in any prior round)
     ///    and is trying to double-spend. Reverts with
     ///    [`Error::AlreadyClaimed`].
-    ///
-    /// 4. **Groth16 proof verifies.** Standard pairing check against the
-    ///    circle's [`VerificationKey`] with public inputs
-    ///    `(nullifier_hash, root, external_nullifier)`. Reverts with
-    ///    [`Error::InvalidProof`].
+    ///    ///   4. **Groth16 proof verifies.** Standard pairing check against the
+    ///    circle's [`VerificationKey`] with public inputs in the order
+    ///    `[nullifier_hash, root, external_nullifier]` (see
+    ///    docs/wire-format.md §1). Reverts with [`Error::InvalidProof`].
     ///
     /// # State effects
     ///
@@ -658,6 +660,8 @@ impl Contract {
         }
 
         // 4. the ZK proof itself must verify against the circle's committed root
+        // Public signal order: [nullifierHash, root, externalNullifier]
+        // — see docs/wire-format.md §1.
         // Bind the recipient into the public inputs so the proof commits to
         // where the payout will land. Compute the same SHA-256-based
         // reduction used for external nullifier binding.
@@ -1052,6 +1056,11 @@ impl Contract {
         );
     }
 
+    // External nullifier derivation: SHA-256 over big-endian u64(circle_id)
+    // || u32(round), reduced mod r. Byte order and modulus reduction are
+    // specified in docs/wire-format.md §2. Both Rust and TypeScript
+    // implementations must agree on these details — a disagreement is
+    // silent until the contract rejects the client's proof with WrongRoundTag.
     // Binds a proof to (circle_id, round) with SHA-256 (a native, accelerated
     // Soroban host function), reduced into the BLS12-381 scalar field via
     // `Fr::from_bytes` (which reduces mod r automatically). This is a
@@ -1084,6 +1093,12 @@ impl Contract {
     }
 
     // Real on-chain Groth16 verification over BLS12-381, using Soroban's
+    // native accelerated pairing host functions (see NOTES.md for why
+    // BLS12-381 rather than BN254 — a pure-Rust BN254 pairing check does not
+    // fit the CPU budget).
+    //
+    // Verification equation and public_inputs vector order are specified in
+    // docs/wire-format.md §§1, 4.
     // native accelerated pairing host functions (see docs/adr/005-bls12-381-curve-choice.md
     // and contracts/BENCHMARKS.md — pure-Rust BN254 does not fit the CPU budget).
     // Checks the standard Groth16 pairing equation:

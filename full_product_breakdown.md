@@ -307,6 +307,8 @@ These must agree, byte-for-byte or value-for-value, across circuit, contract, an
 - **Public signal order:** `[nullifierHash, root, externalNullifier, recipientHash]` — four signals; see [docs/wire-format.md](docs/wire-format.md) (circuit _output_ first, then public _inputs_ in source order). Discovered empirically by inspecting a real `public.json`, not assumed.
 - **Wire format:** `G1Affine` = 96 bytes (`be(X) || be(Y)`), `G2Affine` = 192 bytes (`be(X_c1) || be(X_c0) || be(Y_c1) || be(Y_c0)`) — authoritative detail in [docs/wire-format.md](docs/wire-format.md) (Soroban's documented format, matching ZCash-style BLS12-381 serialization).
 
+> **Single source of truth:** The complete specification of all cross-implementation encodings — public signal order, external nullifier derivation, G1/G2 byte encoding, and vk.ic length rules — lives in [`docs/wire-format.md`](docs/wire-format.md), validated by committed test vectors in `test-vectors/wire-format.json`. Each implementation points there instead of describing the format inline.
+
 ## 11. Security properties
 
 | Property                                                                   | Enforced by                                                                                                                                                         |
