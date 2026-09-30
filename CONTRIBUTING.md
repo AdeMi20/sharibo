@@ -58,6 +58,36 @@ This repo historically had **no CI**, so human review remains the primary gate �
 - **Security-critical paths require a domain reviewer.** `circuits/**` and `contracts/**` changes must be reviewed by someone who reads circom / Rust respectively, not just by whoever happens to be around.
 - **The wire-format boundary needs review on all three sides.** Any PR touching circuit public signals (`circuits/`), contract `public_inputs` (`contracts/`), or SDK encoding (`packages/client/`) must be reviewed on all three sides. The public signal order `[nullifierHash, root, externalNullifier, recipientHash]` and the BLS12-381 field encoding are load-bearing invariants that only hold if circuit, contract, and client agree — see [docs/wire-format.md](docs/wire-format.md).
 
+## Accessibility
+
+**The bar for this repo is WCAG 2.1 Level AA**, and it is enforced, not
+aspirational. `app/src/a11y.test.tsx` runs axe-core against every screen and
+asserts zero violations; `app/src/a11y.styles.test.ts` checks the colour
+tokens and the `prefers-reduced-motion` / `prefers-color-scheme` media
+queries in `app/src/style.css`. Both run in the **App** GitHub Actions
+workflow. Treat an a11y regression the same way you would a failing test.
+
+Two things to know before you touch the UI:
+
+- **Contrast is checked at the token level, not by axe.** jsdom implements
+  almost none of the CSS cascade, so axe's `color-contrast` rule reports
+  nothing useful in a unit test. `a11y.styles.test.ts` parses `style.css` and
+  computes the WCAG ratios directly, which is why adding a new text colour
+  means adding it to the `PAIRS` list in that file too.
+- **Some contrast failures are known and pinned.** Writing the guard surfaced
+  real AA shortfalls, mostly in the dark theme, where the
+  `prefers-color-scheme: dark` block overrides `--ink`/`--bg`/`--card` but not
+  the light-only `--surface-*` and `--text-*` tokens. Each is listed in
+  `KNOWN_SHORTFALLS` and pinned with `it.fails`, so the suite stays green
+  while the defect stays visible. **Fixing one of those colours makes its
+  `it.fails` go red** — that is the signal to delete the entry, not a bug in
+  the guard. Do not add a new entry to silence a failing test.
+
+The audience is ROSCA participants worldwide, including on low-end devices and
+screen readers, so keyboard reachability, visible focus, and the polite live
+region are load-bearing. A change that makes the UI quieter for sighted users
+is a regression even when it looks like a cleanup.
+
 ## Filing an issue
 
 Use the templates in `.github/ISSUE_TEMPLATE/`: **Bug Report** for defects, **Feature Request** for new capabilities, and **Refactor / Architecture Proposal** for restructuring work — when there is no bug and no new feature, but there is a current shape, a proposed shape, a blast radius, and a migration path (e.g. moving code between packages, changing the contract's storage layout, changing the circuit's public signals). The refactor template requires the "where" (current state with file paths) and a behaviour-preservation plan, because those are the two things a refactor issue most often leaves out.
