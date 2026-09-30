@@ -252,6 +252,11 @@ const MAX_CIRCLE_SIZE: u32 = 16;
 /// `apply_fee` and `create_circle` share this single source of truth.
 const MAX_FEE_BASIS_POINTS: u32 = 10_000;
 
+/// Maximum number of members a circle can ever hold.
+/// This matches the Merkle tree depth in `circuits/config.json` (`levels = 4`),
+/// so the upper bound is `2^4 = 16` commitments.
+const MAX_CIRCLE_SIZE: u32 = 16;
+
 /// Minimum remaining TTL (in ledgers) that triggers an `extend_ttl` call.
 ///
 /// Every write entrypoint that touches state (`create_circle`, `fund`,
@@ -462,9 +467,7 @@ impl Contract {
         };
         let key = DataKey::Circle(circle_id);
         env.storage().persistent().set(&key, &circle);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_EXTEND_TO);
+        extend_persistent_ttl(&env, &key);
         env.storage()
             .instance()
             .set(&DataKey::NextCircleId, &(circle_id + 1));
@@ -474,9 +477,7 @@ impl Contract {
         // would reset to 0 and create_circle would silently overwrite
         // circle 0. Extending here ensures the counter outlives quiet
         // periods (see contracts/README.md §Instance-storage archival).
-        env.storage()
-            .instance()
-            .extend_ttl(LEDGER_THRESHOLD, LEDGER_EXTEND_TO);
+        extend_instance_ttl(&env);
 
         env.events().publish(
             (symbol_short!("circle"), symbol_short!("created"), circle_id),
@@ -551,13 +552,7 @@ impl Contract {
             .checked_add(circle.contribution)
             .unwrap_or_else(|| panic_with_error!(&env, Error::Overflow));
         circle.contributors.push_back(from.clone());
-        env.storage().persistent().set(&key, &circle);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_EXTEND_TO);
-        env.storage()
-            .instance()
-            .extend_ttl(LEDGER_THRESHOLD, LEDGER_EXTEND_TO);
+        persist_circle(&env, circle_id, &circle);
         env.events().publish(
             (symbol_short!("circle"), symbol_short!("funded"), circle_id),
             (from, circle.pot, target),
@@ -695,13 +690,7 @@ impl Contract {
         circle.contributors = Vec::new(&env);
         circle.round_started_ledger = env.ledger().sequence();
         circle.nullifiers.push_back(nullifier_hash);
-        env.storage().persistent().set(&key, &circle);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_EXTEND_TO);
-        env.storage()
-            .instance()
-            .extend_ttl(LEDGER_THRESHOLD, LEDGER_EXTEND_TO);
+        persist_circle(&env, circle_id, &circle);
 
         let (fee, net) = apply_fee(&env, circle.fee_bps, payout);
         let token_client = token::Client::new(&env, &circle.token);
@@ -880,6 +869,7 @@ impl Contract {
 
         let pending_key = DataKey::PendingAdmin(circle_id);
         env.storage().persistent().set(&pending_key, &new_admin);
+        extend_persistent_ttl(&env, &pending_key);
         env.storage()
             .persistent()
             .extend_ttl(&pending_key, LEDGER_THRESHOLD, LEDGER_EXTEND_TO);
@@ -921,6 +911,7 @@ impl Contract {
 
         let old_admin = circle.admin.clone();
         circle.admin = new_admin.clone();
+        persist_circle(&env, circle_id, &circle);
         env.storage().persistent().set(&circle_key, &circle);
         env.storage()
             .persistent()
@@ -997,13 +988,7 @@ impl Contract {
         circle.round += 1;
         circle.contributors = Vec::new(&env);
         circle.round_started_ledger = env.ledger().sequence();
-        env.storage().persistent().set(&key, &circle);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_EXTEND_TO);
-        env.storage()
-            .instance()
-            .extend_ttl(LEDGER_THRESHOLD, LEDGER_EXTEND_TO);
+        persist_circle(&env, circle_id, &circle);
 
         env.events().publish(
             (soroban_sdk::symbol_short!("rnd_exp"), circle_id),
@@ -1062,6 +1047,7 @@ impl Contract {
         circle.pot = 0;
         circle.cancelled = true;
         circle.contributors = Vec::new(&env);
+        persist_circle(&env, circle_id, &circle);
         env.storage().persistent().set(&key, &circle);
         env.storage()
             .persistent()
@@ -1163,6 +1149,25 @@ impl Contract {
 
         bls.pairing_check(vp1, vp2)
     }
+}
+
+fn persist_circle(env: &Env, circle_id: u64, circle: &Circle) {
+    let key = DataKey::Circle(circle_id);
+    env.storage().persistent().set(&key, circle);
+    extend_persistent_ttl(env, &key);
+    extend_instance_ttl(env);
+}
+
+fn extend_persistent_ttl(env: &Env, key: &DataKey) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, LEDGER_THRESHOLD, LEDGER_EXTEND_TO);
+}
+
+fn extend_instance_ttl(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(LEDGER_THRESHOLD, LEDGER_EXTEND_TO);
 }
 
 /// Load a [`Circle`] from persistent storage, or revert with

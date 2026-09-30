@@ -14,7 +14,18 @@ export * from "./events.js";
 export * from "./networks.js";
 export * from "./config.js";
 export * from "./errors.js";
-export * from "./artifacts.js";
+export {
+  MEMBERSHIP_WASM_URL,
+  MEMBERSHIP_ZKEY_URL,
+  configureArtifacts,
+  getArtifactsConfig,
+  resetArtifactsConfig,
+  startArtifactPrefetch,
+  subscribeToArtifactPrefetch,
+  type ArtifactPrefetchStatus,
+  type ArtifactPrefetchProgress,
+  type ProverArtifacts,
+} from "./artifacts.js";
 export { decodeContractError } from "./decodeError.js";
 export * from "./retry.js";
 export * from "./events.js";
