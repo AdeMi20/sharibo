@@ -64,26 +64,11 @@ export interface ResolvedSigner {
   signAuthEntry: any;
 }
 
-export interface ResolvedSigner {
-  publicKey: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  signTransaction: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  signAuthEntry: any;
-}
-
 /**
  * Turns a keypair or a wallet signer into the pieces the contract client
  * needs, without constructing the client. Shared by `connect` and the SDK
  * facade so both agree on who the signer is.
  */
-export interface FeeEstimate {
-  /** Minimum resource fee in stroops, as reported by simulation. */
-  minResourceFee: bigint;
-  /** Total fee (base + resource) encoded in the assembled transaction, in stroops. */
-  totalFee: bigint;
-}
-
 export function resolveSigner(
   keypairOrSigner: Keypair | ShariboSigner,
   networkPassphrase: string,
@@ -234,7 +219,6 @@ export function explorerTxUrl(hash: string, networkPassphrase: string): string |
   return `https://stellar.expert/explorer/${network}/tx/${hash}`;
 }
 
-
 /** Shape returned by @stellar/stellar-sdk contract method `signAndSend()`. */
 export type SignAndSendResult = {
   result: unknown;
@@ -292,6 +276,17 @@ function networkPassphraseFromClient(client: ShariboClient): string | undefined 
   const pp = client?.networkPassphrase;
   return typeof pp === "string" ? pp : undefined;
 }
+
+/**
+ * An estimate of the transaction fee costs for an operation.
+ */
+export interface FeeEstimate {
+  /** Minimum resource fee in stroops, as reported by simulation. */
+  minResourceFee: bigint;
+  /** Total fee (base + resource) encoded in the assembled transaction, in stroops. */
+  totalFee: bigint;
+}
+
 /**
  * Estimates the fee for a claim transaction by running a dry-run simulation.
  *
@@ -687,4 +682,3 @@ export async function cancelCircle(
     throw decodeContractError(err);
   }
 }
-

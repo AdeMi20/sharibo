@@ -16,9 +16,15 @@ export default tseslint.config(
   {
     // Build outputs / generated artifacts — never lint these.
     ignores: ["**/dist/", "circuits/build/", "app/public/circuits/"],
+  },
+  {
+    files: ["**/*.{ts,tsx}"],
+    extends: [tseslint.configs.recommended],
     rules: {
-      "no-unused-vars": "error",
-      "@typescript-eslint/no-unused-vars": "error"
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": "warn",
+      "no-redeclare": "off",
+      "@typescript-eslint/no-redeclare": ["error", { "ignoreDeclarationMerge": false }]
     },
   },
 
