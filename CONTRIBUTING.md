@@ -46,11 +46,11 @@ We use a set of topic labels to categorize issues and pull requests. These label
 
 ## Review expectations
 
-This repo has **no CI**, so human review is the gate — a merged PR is effectively the last check before the code lands. `.github/CODEOWNERS` requests the owning reviewers automatically on every PR.
+This repo historically had **no CI**, so human review remains the primary gate — a merged PR is effectively the last check before the code lands. Contract line-coverage is now also enforced in GitHub Actions (`.github/workflows/coverage.yml`) against `coverage-thresholds.json`. `.github/CODEOWNERS` requests the owning reviewers automatically on every PR.
 
 - **Reviewers confirm the gate passed on the merge result.** Because there is no CI, the reviewer is responsible for confirming the local verification gate passes on the **merge result**, not just on the branch as it was pushed. Today that means running `just all` (circuit tests, contract tests, client typecheck; e2e separately), and the umbrella `just verify` recipe that codifies this is tracked in issue [#222](https://github.com/crackedstudio/sharibo/issues/222) — merge conflicts resolved carelessly are how landed work gets silently reverted.
 - **Security-critical paths require a domain reviewer.** `circuits/**` and `contracts/**` changes must be reviewed by someone who reads circom / Rust respectively, not just by whoever happens to be around.
-- **The wire-format boundary needs review on all three sides.** Any PR touching circuit public signals (`circuits/`), contract `public_inputs` (`contracts/`), or SDK encoding (`packages/client/`) must be reviewed on all three sides. The public signal order `[nullifierHash, root, externalNullifier]` and the BLS12-381 field encoding are load-bearing invariants that only hold if circuit, contract, and client agree.
+- **The wire-format boundary needs review on all three sides.** Any PR touching circuit public signals (`circuits/`), contract `public_inputs` (`contracts/`), or SDK encoding (`packages/client/`) must be reviewed on all three sides. The public signal order `[nullifierHash, root, externalNullifier, recipientHash]` and the BLS12-381 field encoding are load-bearing invariants that only hold if circuit, contract, and client agree — see [docs/wire-format.md](docs/wire-format.md).
 
 ## Filing an issue
 
@@ -125,9 +125,10 @@ Getting a fresh machine running and tripping on a toolchain issue (`circom`, `wa
 
 ## Pre-PR checklist
 
-Before opening a pull request, run the comprehensive local verification gate:
+Before opening a pull request, run the authoritative local verification gate:
 
-- Run `just verify` from anywhere inside the repository. It runs TypeScript typechecking (client and app), ESLint, a best-effort dead-code check (`ts-prune`), all unit tests (app and SDK), `cargo test`, and `cargo clippy -- -D warnings`.
-- The recipe intentionally excludes `e2e` and the circuits *trusted setup* because those are slow and/or spend testnet friendbot funds.
+- Run `just ci` from anywhere inside the repository. This is the **same gate CI runs** — TypeScript SDK build, typecheck, `npm run lint`, `npm run lint:dead`, every unit suite (app, client, scripts, circuits checkers, repo-structure), `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test`, and `stellar contract build`.
+- `just verify` is a **fast pre-commit subset** only (typecheck + lint + client/app unit tests). It is not sufficient for a PR.
+- The gate intentionally excludes `e2e`, circuit trusted setup (`just circuits`), mutation, and benchmarks — those are slow and/or spend testnet friendbot funds. Run them on demand when your change touches those areas.
 
-If `just verify` passes locally, it's the single documented answer to "did I break anything?" and a good signal your change is ready for review.
+If `just ci` passes locally, it's the single documented answer to "did I break anything?" and a good signal your change is ready for review.

@@ -1,8 +1,8 @@
 # Sharibo circuits
 
 Zero-knowledge membership circuit for Sharibo, compiled for **BLS12-381**
-(see `membership.template.circom` header and `NOTES.md` for why BLS12-381
-rather than the more common BN254).
+(see `membership.template.circom` header and [docs/adr/005-bls12-381-curve-choice.md](../docs/adr/005-bls12-381-curve-choice.md)
+for why BLS12-381 rather than the more common BN254).
 
 ## Circuit purpose
 
@@ -60,6 +60,19 @@ The compatibility check lives in `scripts/check-poseidon-constants.mjs`; see als
 - **Ignored**: `build/`, `*.zkey`, `*.ptau`
   The `build/` folder contains generated compilation artifacts. `*.zkey` and `*.ptau` are massive cryptographic keys generated locally via `setup.sh` and shouldn't bloat the repository.
 
+## Integrity checkers (supply-chain boundary)
+
+These four scripts are the mechanical claim behind "the artifacts we serve are the ones we built." An auditor will ask exactly what each guarantees. Failure-path fixtures live in `test/fixtures/` and run as part of `npm test` (see `test/checkers.test.js`).
+
+| Script | Guarantees | Threat addressed | Distinct exit codes |
+| ------ | ---------- | ---------------- | ------------------- |
+| `scripts/verify-artifacts.mjs` (`npm run verify-artifacts`) | Each of `verification_key.json`, `membership.wasm`, and `membership_final.zkey` matches a committed SHA-256 (sidecar `*.sha256` and/or `artifact-hashes.json`). An empty or malformed expected-hash file **fails** — never passes vacuously. | Substituted `.zkey` / `.wasm` (attacker-held toxic waste, or a circuit that proves a different statement than the on-chain vk). | `10` missing artifact · `11` missing hash · `12` hash mismatch · `13` malformed/empty hash |
+| `scripts/check-poseidon-constants.mjs` (`npm run check-constants`) | Circom Poseidon255(t=3) round constants + MDS equal the npm `poseidon2` instance; packages share the same `major.minor` family. | Silent cross-implementation drift: browser proofs verify locally but fail on-chain (or vice versa). | `20` version family mismatch · `21` constant/MDS mismatch · `22` parse/structural error |
+| `scripts/verify-setup.sh` (`npm run verify-setup`) | `snarkjs zkey verify` accepts the final zkey against this r1cs + ptau, and exporting the zkey reproduces the committed `verification_key.json` exactly. | Corrupt / foreign zkey, or a silent ceremony re-run that rotated the proving key without updating the committed vk. | `30` missing artifact · `31` zkey verify failed · `32` exported vk ≠ committed |
+| `app/scripts/sync-circuit.mjs` | Runs `verify-artifacts` before copying build outputs into `app/public/circuits/`. Propagates the verifier's exit code. | Serving unverified proving artifacts to the browser demo. | Passes through `verify-artifacts` codes |
+
+`app/scripts/sync-circuit.mjs` and CI should treat non-zero exits as distinct causes (not a single "verification failed" bucket).
+
 ## Setup verification
 
 `setup.sh` runs two automated checks (issue #271), and `npm run verify-setup` re-runs them
@@ -106,7 +119,7 @@ standalone without regenerating anything:
 - **Why BLS12-381**: Soroban provides native host functions for BLS12-381 curve pairings.
 - **Why it is preferred over bn128**: A pure-Rust BN254 (bn128) pairing check inside the contract exceeds Stellar's hard 100M CPU instruction cap per transaction. We had to use BLS12-381 across the entire stack.
 
-(See `NOTES.md` at the repo root for more context.)
+See also [docs/wire-format.md](../docs/wire-format.md) and the historical [NOTES.md](../NOTES.md) build log.
 
 ## Expected outputs
 

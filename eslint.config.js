@@ -54,7 +54,7 @@ export default tseslint.config(
 
   // app: TypeScript + React, runs in the browser.
   {
-    files: ["app/**/*.{ts,tsx}"],
+    files: ["app/**/*.{ts,tsx}", "__mocks__/**/*.ts"],
     extends: [tseslint.configs.recommended],
     plugins: { "react-hooks": reactHooks },
     rules: {
@@ -78,6 +78,14 @@ export default tseslint.config(
   // app/scripts/sync-circuit.mjs: plain Node ESM, not TypeScript.
   {
     files: ["app/scripts/**/*.mjs"],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+
+  // Maintenance checkers + test-vector generators: plain Node ESM.
+  {
+    files: ["scripts/maintenance/**/*.mjs", "test-vectors/**/*.mjs"],
     languageOptions: {
       globals: globals.node,
     },
