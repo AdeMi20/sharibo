@@ -12,8 +12,6 @@ import {
   generateIdentity,
   computeExternalNullifier,
   MerkleTree,
-  generateProof,
-  verifyProofLocally,
   verificationKeyToContractFormat,
   connect,
   connectReadOnly,
@@ -26,10 +24,29 @@ import {
   TREE_LEVELS,
   xlmToStroops,
   formatXlm,
+  validateContributionAmount,
+  ContributionValidationError,
+  formatXlmDisplay,
+  POLL_RETRY_POLICY,
+  PATIENT_RETRY_POLICY,
   type Identity,
   type ContractProof,
   type CircleId,
   makeCircleId,
+  ContractError,
+  CircleNotFoundError,
+  RoundNotFundedError,
+  WrongRoundTagError,
+  AlreadyClaimedError,
+  InvalidProofError,
+  RoundFullError,
+  OverflowError,
+  CircleCancelledError,
+  InvalidCircleParamsError,
+  RpcError,
+  ProvingError,
+  InvalidInputError,
+  describeError,
   networkOf,
 } from "@sharibo/client";
 import { config, configError } from "./config";
@@ -48,9 +65,10 @@ import { checkNetworkMatch } from "./lib/wallet.freighter";
 import { Toaster } from "./components/Toaster";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { useOnlineStatus } from "./hooks/useOnlineStatus";
-import { toUiError, type Failure } from "./state/circleMachine";
+import { useSdkEvents } from "./hooks/useSdkEvents";
+import { diagnose, type Failure } from "./state/circleMachine";
 import { copyDebugBundle, type BundleInput } from "./lib/debugBundle";
-import { clearSession, loadSession, saveSession } from "./lib/session.js";
+import type { LoggedSdkEvent } from "./lib/sdkEventLog";
 
 function formatError(error: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
   const mapped = toUiError(error);
@@ -101,6 +119,76 @@ const NAMES = [
   "paluwagan",
   "chit fund",
 ];
+
+function toUiError(error: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
+  if (error instanceof FriendbotRetryableError) {
+    return FRIEND_BOT_RATE_LIMIT_MESSAGE;
+  }
+
+  // Typed contract-error subclasses — no XDR string matching needed.
+  if (error instanceof AlreadyClaimedError) {
+    return "This proof has already been claimed in this circle. Try the next round.";
+  }
+  if (error instanceof InvalidProofError) {
+    return "The zero-knowledge proof is invalid. Please regenerate and try again.";
+  }
+  if (error instanceof RoundNotFundedError) {
+    return "The circle is not fully funded yet. All members must contribute first.";
+  }
+  if (error instanceof WrongRoundTagError) {
+    return "Proof is bound to a different round. Regenerate the proof for the current round.";
+  }
+  if (error instanceof CircleNotFoundError) {
+    return "Circle not found on-chain. It may have been cancelled or never created.";
+  }
+  if (error instanceof RoundFullError) {
+    return "This round is already fully funded. No more contributions are accepted.";
+  }
+  if (error instanceof OverflowError) {
+    return "Contribution amount or circle size caused an arithmetic overflow.";
+  }
+  if (error instanceof CircleCancelledError) {
+    return "This circle has been cancelled. Start a new one.";
+  }
+  if (error instanceof InvalidCircleParamsError) {
+    return t("error.invalidCircleParams");
+  }
+  if (error instanceof ContributionValidationError) {
+    return t(`error.contribution.${error.causeCode}`);
+  }
+
+  if (error instanceof ContractError) {
+    return error.message;
+  }
+  if (error instanceof RpcError) {
+    return "Network error — please check your connection and retry.";
+  }
+  if (error instanceof ProvingError) {
+    return "Proof generation failed. Please try again.";
+  }
+  if (error instanceof InvalidInputError) {
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return t("error.generic");
+}
+
+// Same shape as toUiError, but additionally recognizes Sharibo contract
+// rejections — the raw `Error(Contract, #4)` Soroban surfaces gets rendered
+// as "AlreadyClaimed: this proof's nullifier was already used; ..." via
+// describeError() (packages/client/src/errors.ts) instead of the bare error
+// code. Falls back to the same Friendbot special-case and raw-message
+// behavior as toUiError for anything that isn't a recognized contract error.
+function getErrorMessage(error: unknown): string {
+  if (error instanceof FriendbotRetryableError) {
+    return FRIEND_BOT_RATE_LIMIT_MESSAGE;
+  }
+  return describeError(error);
+}
 
 
 // Every truncated value on screen (addresses, tx hashes) needs to be
@@ -168,6 +256,7 @@ function CopyDebugBundleButton({
   circleSize,
   pot,
   timings,
+  recentEvents,
 }: {
   circleId: bigint | null;
   round: number;
@@ -177,6 +266,7 @@ function CopyDebugBundleButton({
   circleSize: number;
   pot: bigint;
   timings: Record<string, number>;
+  recentEvents: LoggedSdkEvent[];
 }) {
   const [status, setStatus] = useState<"idle" | "copied" | "fallback" | "error">("idle");
 
@@ -206,6 +296,7 @@ function CopyDebugBundleButton({
       // than leave undefined — the bundle accepts an empty record.
       artifactHashes: {},
       timings,
+      recentEvents,
       userAgent: navigator.userAgent,
     };
 
@@ -468,7 +559,7 @@ function EnvSetupScreen({ errors }: { errors: string[] }) {
         <p className={styles.sub}>
           {t("env.setupIntro")} {t("env.setupHowTo")}
         </p>
-        <ul style={{ textAlign: "left", margin: "1rem 0", padding: "0 1.25rem" }}>
+        <ul style={{ textAlign: "start", margin: "1rem 0", padding: "0 1.25rem" }}>
           {errors.map((err) => (
             <li key={err} style={{ marginBottom: "0.5rem" }}>
               <code>{err}</code>
@@ -537,8 +628,16 @@ function ClaimExplainer() {
 // ── Root component ───────────────────────────────────────────────────────────
 
 export default function App() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const online = useOnlineStatus();
+  const {
+    onEvent,
+    claimStage,
+    setClaimStage,
+    clearEvents,
+    resetClaimStage,
+    recentEvents,
+  } = useSdkEvents();
   const [failure, setFailure] = useState<Failure | null>(null);
 
   if (configError.length > 0) {
@@ -549,9 +648,9 @@ export default function App() {
   const [circlePhase, setCirclePhase] = useState<CirclePhase>("idle");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [events, setEvents] = useState<any[]>([]);
 
-  const [contributionXlm, setContributionXlm] = useState(10);
+  const [contributionXlm, setContributionXlm] = useState("10");
+  const [contributionError, setContributionError] = useState<string | null>(null);
   const [admin, setAdmin] = useState<Keypair | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [tree, setTree] = useState<MerkleTree | null>(null);
@@ -575,7 +674,6 @@ export default function App() {
   const [provingElapsedMs, setProvingElapsedMs] = useState<number | null>(null);
   const [nullifierClaimed, setNullifierClaimed] = useState(false);
   const [rejection, setRejection] = useState<string | null>(null);
-  const [claimStage, setClaimStage] = useState<ClaimStage | null>(null);
   const [proveElapsedSeconds, setProveElapsedSeconds] = useState(0);
   // Step timings (ms) collected during doClaim for the debug bundle.
   const [stepTimings, setStepTimings] = useState<Record<string, number>>({});
@@ -594,7 +692,31 @@ export default function App() {
 
   const [prevCircle, setPrevCircle] = useState<{ id: string; explorerUrl: string } | null>(null);
 
-  const contribution = xlmToStroops(contributionXlm);
+  const contribution = (() => {
+    try {
+      return validateContributionAmount(contributionXlm, { size: CIRCLE_SIZE }).stroops;
+    } catch {
+      try {
+        return xlmToStroops(contributionXlm);
+      } catch {
+        return 0n;
+      }
+    }
+  })();
+
+  function onContributionChange(next: string) {
+    setContributionXlm(next);
+    try {
+      validateContributionAmount(next, { size: CIRCLE_SIZE });
+      setContributionError(null);
+    } catch (e) {
+      if (e instanceof ContributionValidationError) {
+        setContributionError(t(`error.contribution.${e.causeCode}`));
+      } else {
+        setContributionError(t("error.contribution.not_a_number"));
+      }
+    }
+  }
   // Holds the AbortController for the currently-running claim flow so that
   // resetToLanding and the unmount cleanup can cancel it synchronously.
   const claimAbortRef = useRef<AbortController | null>(null);
@@ -618,14 +740,14 @@ export default function App() {
     try {
       const { connect, getCircle } = await import("@sharibo/client");
       const adminClient = await connect(NETWORK, admin);
-      const circle = await getCircle(adminClient, circleId);
-      
+      const circle = await getCircle(adminClient, circleId, POLL_RETRY_POLICY);
+
       setPot(circle.pot);
       setOnChainContributors(circle.contributors);
       setCancelled(circle.cancelled);
       setFeeBps(circle.fee_bps ?? 0);
       setFeeRecipient(circle.fee_recipient ?? "");
-      
+
       // Update member funded status based on on-chain contributors
       setMembers((prev) =>
         prev.map((m) => {
@@ -708,7 +830,7 @@ export default function App() {
       payoutHeadingRef.current?.focus();
     }
   }, [claimResult]);
-  
+
   // When the claim step becomes available, pre-check each member's nullifier
   // against `has_claimed` so we can mark ineligible members immediately
   // (avoids generating a slow proof only to be rejected on-chain).
@@ -773,7 +895,8 @@ export default function App() {
     setBusy(null);
     setError(null);
     setCirclePhase("idle");
-    setContributionXlm(10);
+    setContributionXlm("10");
+    setContributionError(null);
     setAdmin(null);
     setMembers([]);
     setTree(null);
@@ -790,16 +913,17 @@ export default function App() {
     setProvingElapsedMs(null);
     setNullifierClaimed(false);
     setRejection(null);
-    setClaimStage(null);
+    resetClaimStage();
+    clearEvents();
     setProveElapsedSeconds(0);
     setScreen("landing");
   }
 
   function loadState(parsed: any) {
     setCirclePhase("loading");
-    setContributionXlm(parsed.contributionXlm);
+    setContributionXlm(String(parsed.contributionXlm ?? "10"));
     setAdmin(Keypair.fromSecret(parsed.adminSecret));
-    
+
     const loadedMembers = parsed.members.map((m: any) => ({
       keypair: Keypair.fromSecret(m.secret),
       identity: m.identity,
@@ -809,7 +933,7 @@ export default function App() {
       pending: false,
     }));
     setMembers(loadedMembers);
-    
+
     const newTree = MerkleTree.create(
       LEVELS,
       loadedMembers.map((m: any) => m.identity.commitment)
@@ -824,10 +948,10 @@ export default function App() {
     setNullifierHash(parsed.nullifierHash);
     setClaimResult(parsed.claimResult);
     setRejection(parsed.rejection);
-    
+
     setScreen("circle");
     setResumePrompt(null);
-    
+
     // Sync from on-chain after loading state
     setTimeout(() => syncFundingState(), 100);
     setCirclePhase("ready");
@@ -835,6 +959,21 @@ export default function App() {
 
   async function startCircle() {
     setError(null);
+    let validatedStroops: bigint;
+    try {
+      validatedStroops = validateContributionAmount(contributionXlm, {
+        size: CIRCLE_SIZE,
+      }).stroops;
+      setContributionError(null);
+    } catch (e) {
+      const message =
+        e instanceof ContributionValidationError
+          ? t(`error.contribution.${e.causeCode}`)
+          : t("error.contribution.not_a_number");
+      setContributionError(message);
+      setError(message);
+      return;
+    }
     setCirclePhase("loading");
     setBusy(
       "Generating a fresh admin + 5 member identities and funding via friendbot…",
@@ -867,12 +1006,12 @@ export default function App() {
         r.json(),
       );
       const vk = verificationKeyToContractFormat(vkJson);
-      const adminClient = await connect({ ...NETWORK, onEvent: (e) => setEvents(prev => [...prev, e]) }, adminKp);
+      const adminClient = await connect({ ...NETWORK, onEvent }, adminKp);
       const { result: newCircleId } = await createCircle(adminClient, {
         admin: adminKp.publicKey(),
         token: TOKEN,
         root: newTree.root,
-        contribution,
+        contribution: validatedStroops,
         size: CIRCLE_SIZE,
         vk,
         feeBps: 0,
@@ -924,23 +1063,23 @@ export default function App() {
       ]);
       const m = members[i];
       await fundWithFriendbot(m.keypair.publicKey());
-      
+
       // Set optimistic pending state
       setMembers((prev) =>
         prev.map((mm, idx) =>
           idx === i ? { ...mm, pending: true } : mm,
         ),
       );
-      
+
       const memberClient = await connect(NETWORK, m.keypair);
       const { hash } = await fund(memberClient, {
         circleId,
         from: m.keypair.publicKey(),
       });
-      
+
       // Sync with on-chain state after submission
       await syncFundingState();
-      
+
       // Update fund hash for the successful transaction
       setMembers((prev) =>
         prev.map((mm, idx) =>
@@ -971,7 +1110,7 @@ export default function App() {
       }
 
       const networkRes = await getNetworkDetails();
-      
+
       // Check for network mismatch between wallet and app config
       const mismatch = checkNetworkMatch(networkRes.network, NETWORK.networkPassphrase);
       if (mismatch) {
@@ -987,7 +1126,7 @@ export default function App() {
       if (!pubKey) {
         throw new Error(t("error.getAddress"));
       }
-      
+
       const freighterSigner = {
         publicKey: pubKey,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1029,7 +1168,7 @@ export default function App() {
 
       // Sync with on-chain state after submission
       await syncFundingState();
-      
+
       // Update fund hash and freighter key for the successful transaction
       setMembers((prev) =>
         prev.map((mm, idx) => (idx === i ? { ...mm, fundHash: hash, freighterKey: pubKey } : mm)),
@@ -1061,9 +1200,10 @@ export default function App() {
     setRejection(null);
     setBusy(t("busy.claiming"));
     try {
-      const [{ Keypair }, { computeExternalNullifier, generateProof, verifyProofLocally, connect, claim, getCircle, hasClaimed }] = await Promise.all([
+      const [{ Keypair }, { computeExternalNullifier, connect, claim, getCircle, hasClaimed }, { generateProof, verifyProofLocally }] = await Promise.all([
         import("@stellar/stellar-sdk"),
-        import("@sharibo/client")
+        import("@sharibo/client"),
+        import("@sharibo/client/prove"),
       ]);
 
       if (signal.aborted) return;
@@ -1073,6 +1213,7 @@ export default function App() {
 
       if (signal.aborted) return;
       setClaimStage("artifacts");
+      onEvent({ type: "artifact:started" });
       const [wasm, zkey, vkJson] = await Promise.all([
         fetch("/circuits/membership.wasm")
           .then((r) => r.arrayBuffer())
@@ -1082,9 +1223,13 @@ export default function App() {
           .then((b) => new Uint8Array(b)),
         fetch("/circuits/verification_key.json").then((r) => r.json()),
       ]);
+      onEvent({
+        type: "artifact:ready",
+        loaded: wasm.byteLength + zkey.byteLength,
+        total: wasm.byteLength + zkey.byteLength,
+      });
 
       if (signal.aborted) return;
-      setClaimStage("proving");
       setProveElapsedSeconds(0);
       const proveTimer = setInterval(() => setProveElapsedSeconds((s) => s + 1), 1000);
       let generated;
@@ -1100,13 +1245,13 @@ export default function App() {
           },
           wasm,
           zkey,
-          { signal, onEvent: (e) => setEvents((prev) => [...prev, e]) },
+          { signal, onEvent },
         );
       } finally {
         clearInterval(proveTimer);
       }
 
-      setClaimStage("verifying");
+      // proof:finished already set claimStage to "verifying"
       const verifyTimeMs = await verifyProofLocally(
         vkJson,
         generated.publicSignals,
@@ -1120,13 +1265,17 @@ export default function App() {
       if (signal.aborted) return;
       setClaimStage("submitting");
       const adminClient = await connect({ ...NETWORK, onEvent: (e) => setEvents(prev => [...prev, e]) }, admin);
-      const { hash } = await claim(adminClient, {
-        circleId,
-        recipient: recipient.publicKey(),
-        nullifierHash: generated.nullifierHash,
-        externalNullifier: generated.externalNullifier,
-        proof: generated.proof,
-      });
+      const { hash } = await claim(
+        adminClient,
+        {
+          circleId,
+          recipient: recipient.publicKey(),
+          nullifierHash: generated.nullifierHash,
+          externalNullifier: generated.externalNullifier,
+          proof: generated.proof,
+        },
+        PATIENT_RETRY_POLICY,
+      );
 
       if (signal.aborted) return;
       setProof(generated.proof);
@@ -1146,7 +1295,7 @@ export default function App() {
     } finally {
       if (!signal.aborted) {
         setBusy(null);
-        setClaimStage(null);
+        resetClaimStage();
       }
       // Release the ref only if this controller is still the active one.
       if (claimAbortRef.current === controller) {
@@ -1168,9 +1317,9 @@ export default function App() {
       // Fund round `round` again so this exercises the nullifier-reuse
       // check specifically, not just "the pot is empty" — the same
       // proof's nullifier gets rejected even against a fresh, funded round.
-      const adminClient = await connect({ ...NETWORK, onEvent: (e) => setEvents(prev => [...prev, e]) }, admin);
+      const adminClient = await connect({ ...NETWORK, onEvent }, admin);
       for (const m of members) {
-        const memberClient = await connect({ ...NETWORK, onEvent: (e) => setEvents(prev => [...prev, e]) }, m.keypair);
+        const memberClient = await connect({ ...NETWORK, onEvent }, m.keypair);
         await fund(memberClient, { circleId, from: m.keypair.publicKey() });
       }
       const freshExternalNullifier = await computeExternalNullifier(
@@ -1179,13 +1328,17 @@ export default function App() {
       );
 
       setBusy(t("busy.replaying"));
-      await claim(adminClient, {
-        circleId,
-        recipient: Keypair.random().publicKey(),
-        nullifierHash,
-        externalNullifier: freshExternalNullifier,
-        proof,
-      });
+      await claim(
+        adminClient,
+        {
+          circleId,
+          recipient: Keypair.random().publicKey(),
+          nullifierHash,
+          externalNullifier: freshExternalNullifier,
+          proof,
+        },
+        PATIENT_RETRY_POLICY,
+      );
       setRejection(t("rejection.unexpected"));
     } catch (e) {
       setRejection(formatError(e, t));
@@ -1204,22 +1357,22 @@ export default function App() {
   async function doCancelCircle() {
     if (!admin || circleId === null) return;
     setError(null);
-    
+
     const refundCount = onChainContributors.length;
     const refundTotal = (Number(pot) / 1e7).toFixed(1);
-    
+
     const confirmed = window.confirm(
       t("cancel.confirmation", { count: refundCount, total: refundTotal })
     );
-    
+
     if (!confirmed) return;
-    
+
     setBusy(t("cancel.busy"));
     try {
       const { connect, cancelCircle } = await import("@sharibo/client");
       const adminClient = await connect(NETWORK, admin);
       await cancelCircle(adminClient, { circleId });
-      
+
       // Sync with on-chain state after cancellation
       await syncFundingState();
     } catch (e) {
@@ -1262,7 +1415,7 @@ export default function App() {
             You are offline. Network actions are paused — reconnect to start or retry a circle.
           </div>
         )}
-                <div className={`${styles.card} ${styles.hero}`}>
+        <div className={`${styles.card} ${styles.hero}`}>
           <LanguageSwitcher className={styles.languageSwitcherHero} />
           <div className={styles.namewall}>
             {NAMES.map((n) => (
@@ -1281,9 +1434,31 @@ export default function App() {
             pot. Sharibo proves <em>who's entitled to claim</em> without ever
             revealing <em>who</em> claimed.
           </p>
+          <p className={styles.sub}>
+            Every round, everyone contributes. Every round, one member takes the
+            pot. Sharibo proves <em>who's entitled to claim</em> without ever
+            revealing <em>who</em> claimed.
+          </p>
+          <label className={styles.contributionField}>
+            <span>{t("landing.contributionLabel")}</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-invalid={contributionError ? true : undefined}
+              aria-describedby={contributionError ? "contribution-error" : undefined}
+              value={contributionXlm}
+              disabled={!!busy}
+              onChange={(e) => onContributionChange(e.target.value)}
+            />
+          </label>
+          {contributionError && (
+            <p id="contribution-error" className={styles.error} role="alert">
+              {contributionError}
+            </p>
+          )}
           <button
             className={`${styles.btn} ${styles.btnPrimary}`}
-            disabled={!online || !!busy}
+            disabled={!online || !!busy || !!contributionError}
             onClick={startCircle}
           >
             {busy ?? t("landing.launch")}
@@ -1382,7 +1557,7 @@ export default function App() {
               />
             </div>
             <p className="pot-label">
-              pot: {(Number(pot) / 1e7).toFixed(1)} / {contributionXlm * CIRCLE_SIZE} XLM ·
+              pot: {formatXlmDisplay(pot, locale)} / {contributionXlm * CIRCLE_SIZE} XLM ·
               round {round}
               {feeBps > 0 &&
                 ` · ${t("pot.fee", {
@@ -1392,68 +1567,68 @@ export default function App() {
               {cancelled && ` · ${t("cancel.cancelled")}`}
             </p>
 
-        {cancelled && (
-          <div className="callout" style={{ backgroundColor: "var(--color-warning-bg)", color: "var(--color-warning-text)" }}>
-            <strong>{t("cancel.cancelled")}</strong>
-            <p>{t("cancel.cancelledMessage")}</p>
-          </div>
-        )}
+            {cancelled && (
+              <div className="callout" style={{ backgroundColor: "var(--color-warning-bg)", color: "var(--color-warning-text)" }}>
+                <strong>{t("cancel.cancelled")}</strong>
+                <p>{t("cancel.cancelledMessage")}</p>
+              </div>
+            )}
 
-        {!cancelled && admin && (
-          <div className="row" style={{ justifyContent: "flex-end", marginTop: "1rem" }}>
-            <button
-              className="btn btn-danger btn-small"
-              disabled={!!busy || onChainContributors.length === 0}
-              onClick={doCancelCircle}
-              title="Cancel this circle and refund all contributors"
-            >
-              {t("cancel.title")}
-            </button>
-          </div>
-        )}
-
-        <h2>Fund</h2>
-        <div className={styles.members}>
-          {members.map((m, i) => (
-            <div key={i} className={`member ${m.funded ? "funded" : ""} ${m.pending ? "pending" : ""}`}>
-              <span className="member-addr">
-                {t("fund.memberLabel", { index: i + 1 })} · {short(m.keypair.publicKey())}
-                <CopyButton
-                  value={m.keypair.publicKey()}
-                  label={t("fund.memberAddressLabel", { index: i + 1 })}
-                />
-              </span>
-              {m.pending ? (
-                <span className="pending-indicator">⟳ submitting…</span>
-              ) : m.funded ? (
-                <a
-                  className={styles.link}
-                  href={explorerTx(m.fundHash!)}
-                  target="_blank"
-                  rel="noreferrer"
+            {!cancelled && admin && (
+              <div className="row" style={{ justifyContent: "flex-end", marginTop: "1rem" }}>
+                <button
+                  className="btn btn-danger btn-small"
+                  disabled={!!busy || onChainContributors.length === 0}
+                  onClick={doCancelCircle}
+                  title="Cancel this circle and refund all contributors"
                 >
-                  {t("fund.fundedLink")}
-                </a>
-              ) : (
-                <div className={styles.row}>
-                  <button
-                    className={`${styles.btn} ${styles.btnSmall}`}
-                    disabled={!online || !!busy || round > 0}
-                    onClick={() => fundMember(i)}
-                  >
-                    {t("fund.demoButton", { amount: contributionXlm })}
-                  </button>
-                  {hasFreighter && (
-                    <button
-                      className={`${styles.btn} ${styles.btnSmall}`}
-                      disabled={!online || !!busy || round > 0}
-                      onClick={() => fundWithFreighter(i)}
+                  {t("cancel.title")}
+                </button>
+              </div>
+            )}
+
+            <h2>Fund</h2>
+            <div className={styles.members}>
+              {members.map((m, i) => (
+                <div key={i} className={`member ${m.funded ? "funded" : ""} ${m.pending ? "pending" : ""}`}>
+                  <span className="member-addr">
+                    {t("fund.memberLabel", { index: i + 1 })} · {short(m.keypair.publicKey())}
+                    <CopyButton
+                      value={m.keypair.publicKey()}
+                      label={t("fund.memberAddressLabel", { index: i + 1 })}
+                    />
+                  </span>
+                  {m.pending ? (
+                    <span className="pending-indicator">⟳ submitting…</span>
+                  ) : m.funded ? (
+                    <a
+                      className={styles.link}
+                      href={explorerTx(m.fundHash!)}
+                      target="_blank"
+                      rel="noreferrer"
                     >
-                      {t("fund.freighterButton")}
-                    </button>
+                      {t("fund.fundedLink")}
+                    </a>
+                  ) : (
+                    <div className={styles.row}>
+                      <button
+                        className={`${styles.btn} ${styles.btnSmall}`}
+                        disabled={!online || !!busy || round > 0}
+                        onClick={() => fundMember(i)}
+                      >
+                        {t("fund.demoButton", { amount: contributionXlm })}
+                      </button>
+                      {hasFreighter && (
+                        <button
+                          className={`${styles.btn} ${styles.btnSmall}`}
+                          disabled={!online || !!busy || round > 0}
+                          onClick={() => fundWithFreighter(i)}
+                        >
+                          {t("fund.freighterButton")}
+                        </button>
+                      )}
+                    </div>
                   )}
-                </div>
-              )}
                 </div>
               ))}
             </div>
@@ -1599,6 +1774,7 @@ export default function App() {
             circleSize={CIRCLE_SIZE}
             pot={pot}
             timings={stepTimings}
+            recentEvents={recentEvents()}
           />
         </div>
       </div>
