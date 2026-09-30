@@ -23,6 +23,12 @@ We use a set of topic labels to categorize issues and pull requests. These label
 | refactor | Code structure improvements | Codebase-wide |
 | performance | Speed & resource usage | Performance-critical code |
 | roadmap | Larger feature from the roadmap | Planned features |
+| architecture | Structural / design decisions | Architecture proposals, ADRs |
+| tech-debt | Known shortcuts to pay down | Deferred cleanups |
+| observability | Logging, metrics, tracing | Observability code |
+| i18n | Internationalization | User-facing strings |
+| harden | Robustness hardening | Input validation, error paths |
+| api | Public API surface | SDK exports, contract entrypoints |
 
 ### GitHub Default Labels
 
