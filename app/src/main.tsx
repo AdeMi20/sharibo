@@ -24,7 +24,7 @@ import App from "./App.js";
 import { ErrorBoundary } from "./ErrorBoundary.js";
 import { getCapabilityReport } from "./lib/capabilities.js";
 import { I18nProvider, useI18n } from "./i18n.js";
-import "./style.css";
+import "./tokens.css";
 
 function UnsupportedBrowserScreen() {
   const { t } = useI18n();

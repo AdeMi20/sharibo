@@ -50,7 +50,7 @@ import {
   networkOf,
 } from "@sharibo/client";
 import { config, configError } from "./config";
-import { useI18n } from "./i18n";
+import { LanguageSwitcher, useI18n } from "./i18n";
 import { usePoliteLiveRegion } from "./usePoliteLiveRegion";
 import { ArtifactProgress } from "./components/ArtifactProgress.js";
 import { explorerTx, short, explorerAccount, explorerContract } from "./lib/explorer";
@@ -59,8 +59,6 @@ import { MemberRingSkeleton } from "./components/MemberRing";
 import { FundingListSkeleton } from "./components/FundingList";
 import {
   friendbotFund as fundWithFriendbot,
-  FriendbotRetryableError,
-  FRIEND_BOT_RATE_LIMIT_MESSAGE,
 } from "./lib/friendbot";
 import styles from "./App.module.css";
 import { checkNetworkMatch } from "./lib/wallet.freighter";
@@ -72,19 +70,9 @@ import { diagnose, type Failure } from "./state/circleMachine";
 import { copyDebugBundle, type BundleInput } from "./lib/debugBundle";
 import type { LoggedSdkEvent } from "./lib/sdkEventLog";
 
-const BIGINT_MARKER = 'BIGINT::';
-function replacer(key: string, value: unknown): unknown {
-  if (typeof value === 'bigint') {
-    return BIGINT_MARKER + value.toString();
-  }
-  return value;
-}
-
-function reviver(key: string, value: unknown): unknown {
-  if (typeof value === 'string' && value.startsWith(BIGINT_MARKER)) {
-    return BigInt(value.slice(BIGINT_MARKER.length));
-  }
-  return value;
+function formatError(error: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
+  const mapped = toUiError(error);
+  return t(mapped.key, mapped.vars);
 }
 
 // `config` is null when config validation failed (see config.ts); the component
@@ -113,25 +101,6 @@ function TestnetBanner() {
       <a className={styles.bannerLink} href={README_URL} target="_blank" rel="noreferrer">
         honest limitations ↗
       </a>
-    </div>
-  );
-}
-
-function LanguageSwitcher({ className = "" }: { className?: string }) {
-  const { locale, locales, setLocale } = useI18n();
-  return (
-    <div className={`language-switcher ${className}`}>
-      <select
-        value={locale}
-        onChange={(e) => setLocale(e.target.value)}
-        aria-label="Language"
-      >
-        {locales.map((code) => (
-          <option key={code} value={code}>
-            {code}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }
@@ -715,16 +684,9 @@ export default function App() {
   const [resumePrompt, setResumePrompt] = useState<any>(null);
 
   useEffect(() => {
-    const saved = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("sharibo_demo_state") : null;
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved, reviver);
-        if (parsed && parsed.circleId) {
-          setResumePrompt(parsed);
-        }
-      } catch {
-        sessionStorage.removeItem("sharibo_demo_state");
-      }
+    const result = loadSession();
+    if (result.ok && result.value.circleId) {
+      setResumePrompt(result.value);
     }
   }, []);
 
@@ -891,7 +853,7 @@ export default function App() {
         if (!mounted) return;
         setMembers((prev) => prev.map((m, i) => ({ ...m, ineligible: results[i], ineligibleReason: results[i] ? "Already claimed in this circle" : undefined })));
       } catch (e) {
-        setError(toUiError(e, t));
+        setError(formatError(e, t));
       } finally {
         if (mounted) setBusy(null);
       }
@@ -928,7 +890,7 @@ export default function App() {
     claimAbortRef.current = null;
 
     setPreviousCircleId(circleId);
-    sessionStorage.removeItem("sharibo_demo_state");
+    clearSession();
 
     setBusy(null);
     setError(null);
@@ -1066,8 +1028,24 @@ export default function App() {
       setFeeRecipient("");
       setScreen("circle");
       setCirclePhase("ready");
+      saveSession({
+        contributionXlm,
+        adminSecret: adminKp.secret(),
+        members: newMembers.map((member) => ({
+          secret: member.keypair.secret(),
+          identity: member.identity,
+          fundHash: member.fundHash,
+        })),
+        circleId: makeCircleId(newCircleId),
+        round: 0,
+        claimantIndex: 0,
+        proof: null,
+        nullifierHash: null,
+        claimResult: null,
+        rejection: null,
+      });
     } catch (e) {
-      setError(toUiError(e, t));
+      setError(formatError(e, t));
       setCirclePhase("error");
     } finally {
       setBusy(null);
@@ -1115,7 +1093,7 @@ export default function App() {
           idx === i ? { ...mm, pending: false } : mm,
         ),
       );
-      setError(toUiError(e, t));
+      setError(formatError(e, t));
     } finally {
       setBusy(null);
     }
@@ -1202,7 +1180,7 @@ export default function App() {
           idx === i ? { ...mm, pending: false } : mm,
         ),
       );
-      setError(getErrorMessage(e));
+      setError(formatError(e, t));
     } finally {
       setBusy(null);
     }
@@ -1313,7 +1291,7 @@ export default function App() {
       // Sync with on-chain state after claim
       await syncFundingState();
     } catch (e) {
-      setError(toUiError(e, t));
+      setError(formatError(e, t));
     } finally {
       if (!signal.aborted) {
         setBusy(null);
@@ -1363,7 +1341,7 @@ export default function App() {
       );
       setRejection(t("rejection.unexpected"));
     } catch (e) {
-      setRejection(toUiError(e, t));
+      setRejection(formatError(e, t));
     } finally {
       // Reflect the on-chain state either way: the re-funding above happened
       // for real even though the replayed claim itself was rejected.
@@ -1398,7 +1376,7 @@ export default function App() {
       // Sync with on-chain state after cancellation
       await syncFundingState();
     } catch (e) {
-      setError(toUiError(e, t));
+      setError(formatError(e, t));
     } finally {
       setBusy(null);
     }
@@ -1417,7 +1395,7 @@ export default function App() {
               Resume Circle
             </button>
             <button className={`${styles.btn} ${styles.btnDanger}`} onClick={() => {
-              sessionStorage.removeItem("sharibo_demo_state");
+              clearSession();
               setResumePrompt(null);
             }}>
               {t("resume.discardButton")}

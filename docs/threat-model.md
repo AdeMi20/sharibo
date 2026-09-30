@@ -4,6 +4,10 @@ Sharibo's README states what the ZK proof is doing and lists honest limitations.
 
 Scope: `contracts/sharibo/src/lib.rs`, `circuits/membership.template.circom`, `packages/client/`, and the demo entry points that call them (`scripts/e2e.ts`, `app/src/App.tsx`). Same scope as [SECURITY.md](../SECURITY.md).
 
+The browser demo stores throwaway generated secret keys in `sessionStorage` so a
+refresh can resume a testnet circle. This is intentionally not a production key
+store; the persistence boundary and versioning live in `app/src/lib/session.ts`.
+
 ## Assets
 
 | Asset | What it means concretely |

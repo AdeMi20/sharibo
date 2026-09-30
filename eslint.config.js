@@ -54,7 +54,7 @@ export default tseslint.config(
 
   // app: TypeScript + React, runs in the browser.
   {
-    files: ["app/**/*.{ts,tsx}"],
+    files: ["app/**/*.{ts,tsx}", "__mocks__/**/*.ts"],
     extends: [tseslint.configs.recommended],
     plugins: { "react-hooks": reactHooks },
     rules: {
