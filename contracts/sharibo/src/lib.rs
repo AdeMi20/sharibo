@@ -2,11 +2,15 @@
 #[cfg(test)]
 extern crate std;
 
+
+mod storage;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
     crypto::bls12_381::{Fr, G1Affine, G2Affine},
     panic_with_error, symbol_short, token, vec, xdr::ToXdr, Address, Bytes, Env, Vec,
 };
+
+use crate::storage::{load_circle, save_circle, bump_instance, LEDGER_EXTEND_TO, LEDGER_THRESHOLD};
 
 /// Groth16 verification key over BLS12-381.
 ///
@@ -525,7 +529,6 @@ impl Contract {
     pub fn fund(env: Env, circle_id: u64, from: Address) {
         from.require_auth();
 
-        let key = DataKey::Circle(circle_id);
         let mut circle = load_active_circle(&env, circle_id);
 
         // Reject funding into an already-expired round: the pot will never
@@ -635,7 +638,6 @@ impl Contract {
         external_nullifier: Fr,
         proof: Proof,
     ) {
-        let key = DataKey::Circle(circle_id);
         let mut circle = load_active_circle(&env, circle_id);
 
         // 1. round must be fully funded
@@ -749,11 +751,7 @@ impl Contract {
     ///
     /// * [`Error::CircleNotFound`] — `circle_id` does not exist.
     pub fn get_round(env: Env, circle_id: u64) -> u32 {
-        let circle: Circle = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Circle(circle_id))
-            .unwrap_or_else(|| panic_with_error!(&env, Error::CircleNotFound));
+        let circle: Circle = load_circle(&env, circle_id);
         circle.round
     }
 
@@ -766,11 +764,7 @@ impl Contract {
     ///
     /// * [`Error::CircleNotFound`] — `circle_id` does not exist.
     pub fn get_pot(env: Env, circle_id: u64) -> i128 {
-        let circle: Circle = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Circle(circle_id))
-            .unwrap_or_else(|| panic_with_error!(&env, Error::CircleNotFound));
+        let circle: Circle = load_circle(&env, circle_id);
         circle.pot
     }
 
@@ -790,11 +784,7 @@ impl Contract {
     /// * [`Error::Overflow`] — `contribution * size` overflows `i128`
     ///   (absurd parameters set at circle creation).
     pub fn get_status(env: Env, circle_id: u64) -> (u32, i128, i128, bool) {
-        let circle: Circle = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Circle(circle_id))
-            .unwrap_or_else(|| panic_with_error!(&env, Error::CircleNotFound));
+        let circle: Circle = load_circle(&env, circle_id);
         let target = pot_target(&env, &circle);
         (circle.round, circle.pot, target, circle.cancelled)
     }
@@ -810,11 +800,7 @@ impl Contract {
     ///
     /// * [`Error::CircleNotFound`] — `circle_id` does not exist.
     pub fn get_contributors(env: Env, circle_id: u64) -> Vec<Address> {
-        let circle: Circle = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Circle(circle_id))
-            .unwrap_or_else(|| panic_with_error!(&env, Error::CircleNotFound));
+        let circle: Circle = load_circle(&env, circle_id);
         circle.contributors
     }
 
@@ -854,12 +840,7 @@ impl Contract {
     /// Reverts with [`Error::CircleCancelled`] on a cancelled circle — there
     /// is no point transferring admin rights once the circle is closed.
     pub fn propose_admin(env: Env, circle_id: u64, new_admin: Address) {
-        let key = DataKey::Circle(circle_id);
-        let circle: Circle = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::CircleNotFound));
+        let circle = load_circle(&env, circle_id);
 
         circle.admin.require_auth();
 
@@ -889,12 +870,7 @@ impl Contract {
     /// Only the address stored by [`Self::propose_admin`] may call this.
     /// Reverts with [`Error::CircleCancelled`] on a cancelled circle.
     pub fn accept_admin(env: Env, circle_id: u64) {
-        let circle_key = DataKey::Circle(circle_id);
-        let mut circle: Circle = env
-            .storage()
-            .persistent()
-            .get(&circle_key)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::CircleNotFound));
+        let mut circle = load_circle(&env, circle_id);
 
         if circle.cancelled {
             panic_with_error!(&env, Error::CircleCancelled);
@@ -949,12 +925,7 @@ impl Contract {
     /// - Resets `pot`, `contributors`, and `round_started_ledger`.
     /// - Emits a `rnd_exp` event.
     pub fn expire_round(env: Env, circle_id: u64) {
-        let key = DataKey::Circle(circle_id);
-        let mut circle: Circle = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::CircleNotFound));
+        let mut circle = load_circle(&env, circle_id);
 
         if circle.cancelled {
             panic_with_error!(&env, Error::CircleCancelled);
@@ -1032,7 +1003,6 @@ impl Contract {
     /// * [`Error::CircleNotFound`] — `circle_id` does not exist.
     /// * [`Error::CircleCancelled`] — circle was already cancelled.
     pub fn cancel_circle(env: Env, circle_id: u64) {
-        let key = DataKey::Circle(circle_id);
         let mut circle = load_active_circle(&env, circle_id);
 
         circle.admin.require_auth();
@@ -1172,18 +1142,6 @@ fn extend_instance_ttl(env: &Env) {
 
 /// Load a [`Circle`] from persistent storage, or revert with
 /// [`Error::CircleNotFound`].
-///
-/// This is the single authoritative source of that error; no call site should
-/// open-code the storage lookup.
-fn load_circle(env: &Env, circle_id: u64) -> Circle {
-    env.storage()
-        .persistent()
-        .get(&DataKey::Circle(circle_id))
-        .unwrap_or_else(|| panic_with_error!(env, Error::CircleNotFound))
-}
-
-/// Load a [`Circle`] and additionally reject it if it has been cancelled,
-/// reverting with [`Error::CircleCancelled`].
 ///
 /// Used by every entrypoint that must not operate on a closed circle:
 /// [`Contract::fund`], [`Contract::claim`], and [`Contract::cancel_circle`].
