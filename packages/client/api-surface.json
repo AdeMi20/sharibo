@@ -26,6 +26,7 @@
     "WrongRoundTagError": "function"
   },
   "functions": {
+    "assertInField": "function",
     "cancelCircle": "function",
     "claim": "function",
     "clearContractClientCache": "function",
@@ -60,23 +61,10 @@
     "getRound": "function",
     "getStatus": "function",
     "hasClaimed": "function",
-    "isTestnet": "function",
-    "makeCircleId": "function",
-    "networkOf": "function",
-    "parseContractErrorCode": "function",
-    "populateTxResult": "function",
+    "startArtifactPrefetch": "function",
     "poseidon": "function",
-    "prove": "function",
-    "randomFieldElement": "function",
-    "resolveSigner": "function",
-    "stroopsToXlm": "function",
-    "validateCircuitInput": "function",
-    "validateContractProof": "function",
-    "validateContractVerificationKey": "function",
-    "verificationKeyToContractFormat": "function",
-    "verifyProofLocally": "function",
-    "withRetry": "function",
-    "xlmToStroops": "function"
+    "getArtifactPrefetchProgress": "function",
+    "subscribeToArtifactPrefetch": "function"
   },
   "types": {
     "CircleView": "type",

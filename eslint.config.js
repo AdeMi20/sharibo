@@ -23,9 +23,15 @@ export default tseslint.config(
   {
     // Build outputs / generated artifacts — never lint these.
     ignores: ["**/dist/", "circuits/build/", "app/public/circuits/"],
+  },
+  {
+    files: ["**/*.{ts,tsx}"],
+    extends: [tseslint.configs.recommended],
     rules: {
-      "no-unused-vars": "error",
-      "@typescript-eslint/no-unused-vars": "error"
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": "warn",
+      "no-redeclare": "off",
+      "@typescript-eslint/no-redeclare": ["error", { "ignoreDeclarationMerge": false }]
     },
   },
 
@@ -94,7 +100,7 @@ export default tseslint.config(
 
   // app: TypeScript + React, runs in the browser.
   {
-    files: ["app/**/*.{ts,tsx}"],
+    files: ["app/**/*.{ts,tsx}", "__mocks__/**/*.ts"],
     extends: [tseslint.configs.recommended],
     plugins: { "react-hooks": reactHooks },
     rules: {

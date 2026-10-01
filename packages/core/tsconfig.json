@@ -2,10 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "esModuleInterop": true,
-    "outDir": "dist",
     "declaration": true,
-    "types": ["node"],
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
 }

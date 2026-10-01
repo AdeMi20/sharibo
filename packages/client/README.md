@@ -249,3 +249,101 @@ ShariboNetworkConfig
 ShariboSigner
 TxResult
 ```
+
+### Internal subpath
+
+`@sharibo/client/internal` exposes non-public helpers for deep integration work
+(see `src/internal.ts`). It imports nothing eagerly into the main entrypoint, so
+`ArtifactPrefetchProgress` and `FR_MODULUS` no longer reach plain consumers.
+
+## Requirements
+
+- **Node ≥ 20** (the repo's `.nvmrc` pins Node 20; older versions are untested)
+- **Web Crypto API** — `globalThis.crypto` must be available. Node 18+ exposes this
+  as a built-in global; browsers have had it for years. No polyfill is needed.
+
+## Node vs browser entry points
+
+The package ships a conditional `exports` map:
+
+| Condition | Entry point | Side effects |
+|-----------|-------------|--------------|
+| `browser` | `src/index.browser.ts` | Mounts the "Preparing prover…" DOM toast; starts background artifact pre-fetch |
+| `default` (Node, tests) | `src/index.ts` | None — safe to import in scripts, tests, and CI |
+
+Bundlers that honour the `browser` exports condition (Vite, webpack) resolve to the
+browser entry automatically. Node and test runners get the side-effect-free default.
+
+If you need the background pre-fetch in a browser app that imports the package
+directly (without a bundler resolving the `browser` condition), call
+`startArtifactPrefetch()` explicitly after import. The progress UI lives in
+the app and subscribes via `subscribeToArtifactPrefetch()`.
+`prefetchMembershipArtifacts()` explicitly after import. The progress UI lives
+in the app and subscribes via `subscribeToArtifactPrefetch()`. Wire the same
+handler into artifact events with `setArtifactOnEvent(onEvent)` or
+`configureArtifacts({ onEvent })`.
+
+## Observability (`onEvent` / `SdkEvent`)
+
+Pass a stable `onEvent` callback on `connect({ …, onEvent })` and
+`generateProof(…, { onEvent })` so retries and proof work are visible to the UI.
+
+`SdkEvent` is an exported discriminated union — switch on `event.type`
+exhaustively. Full table (name, payload, when it fires):
+[docs/observability.md](../../docs/observability.md).
+
+Notable events for a claim spinner:
+
+- `rpc:retry` / `rpc:failure` — transient RPC pain and giving up (#294)
+- `proof:started` / `proof:finished` — local Groth16 work
+- `artifact:started` / `artifact:ready` / `artifact:error` — wasm/zkey download
+- `tx:submitted` / `tx:confirmed` — after `signAndSend`
+
+Keep a bounded buffer on the consumer side; the demo app’s `useSdkEvents()`
+caps at 100 entries and feeds the debug bundle.
+
+## Retries and observability
+
+Network requests in the Soroban testnet environment can occasionally fail due
+to rate limits or transient load (e.g. `429 Too Many Requests`,
+`503 Service Unavailable`, or timeouts).
+
+### What is retried
+
+- **Simulation / preparation phase:** Contract calls retry with exponential
+  backoff + jitter on transient errors only (429/5xx, timeouts, connection
+  resets, fetch failures). Deterministic `ContractError`s are **never**
+  retried — retrying them burns fees.
+- **Submit phase:** Once a transaction is signed and submitted
+  (`signAndSend`), no further automatic retries are attempted. A failure
+  during submission or polling surfaces immediately; the transaction state
+  is ambiguous and a retry could double-spend.
+
+### Default policy and named presets
+
+| Preset | `maxRetries` | `baseDelayMs` | Worst-case sleep | Use for |
+|---|---|---|---|---|
+| `POLL_RETRY_POLICY` | 1 | 250 | ~250ms | UI polling loops |
+| `DEFAULT_RETRY_POLICY` | 3 | 500 | ~3.5s | Most reads/writes |
+| `PATIENT_RETRY_POLICY` | 5 | 750 | ~23.25s | `claim` (costly to regenerate proof) |
+
+Worst-case sleep is approximately `baseDelayMs * (2^maxRetries - 1)` (upper
+bound when every retry draws the maximum 1.0× jitter). That excludes the time
+spent on the failed attempts themselves.
+
+### Configuration surface
+
+1. **Per client** — `ShariboSDK.connect(config, signer, { retryPolicy })`
+2. **Per call** — every free function in `contract.ts` and every SDK method
+   accepts an optional `retryPolicy` that overrides the client default:
+   `getCircle(client, id, POLL_RETRY_POLICY)`,
+   `claim(client, args, PATIENT_RETRY_POLICY)`.
+
+The browser app polls with `POLL_RETRY_POLICY` and claims with
+`PATIENT_RETRY_POLICY`.
+
+### Observability
+
+`withRetry` emits `rpc:attempt`, `rpc:retry`, and `rpc:success` on the
+optional `SdkEventEmitter` so a retry storm is visible rather than silent.
+Pass `{ onEvent }` via network config / client construction to subscribe.

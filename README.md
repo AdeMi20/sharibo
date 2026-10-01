@@ -124,9 +124,18 @@ Full structured breakdown — assets, adversaries, and which code enforces each 
 
 | Suite                                      | Coverage                                                                                                                                | Result      |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| Circuit (`circuits/test/`)                 | valid proof, wrong root, tampered path, nullifier determinism, non-boolean path index                                                   | **5/5**     |
-| Contract (`contracts/sharibo/src/test.rs`) | happy path **with a real proof**, underfunded, replay, stale round tag, forged public input (real pairing failure), CPU budget, auth ×2 | **8/8**     |
-| E2E (`scripts/e2e.ts`, live testnet)       | create → 5× fund → prove → claim to fresh address → assertions → round 2 fund → replay → `AlreadyClaimed`                               | **passing** |
+| Circuit (`circuits/test/`)                 | valid proof, wrong root, tampered path, nullifier determinism, non-boolean path index                                                   | passing     |
+| Contract (`contracts/sharibo/src/test/`)   | happy path **with a real proof**, underfunded, replay, stale round tag, forged public input (real pairing failure), CPU budget, auth ×2 | passing     |
+| Core (`packages/core/`)                    | cryptography primitives, poseidon hashes, merkle tree logic                                                                             | passing     |
+| Client (`packages/client/`)                | identity generation, tree construction, proof generation, typed contract calls                                                          | passing     |
+| App (`app/`)                               | browser UI, identity state, funding flow, proof generation in-browser                                                                   | passing     |
+| Scripts (`scripts/`)                       | e2e and smoke test helpers, maintenance checkers                                                                                        | passing     |
+| E2E (`scripts/e2e.ts`, live testnet)       | create → 5× fund → prove → claim to fresh address → assertions → round 2 fund → replay → `AlreadyClaimed`                               | passing     |
+
+## Benchmarks
+
+- **On-chain contract CPU limits:** [contracts/BENCHMARKS.md](contracts/BENCHMARKS.md) (run with `just bench-contract`).
+- **Off-chain client proving wall-clock time:** [packages/client/BENCHMARKS.md](packages/client/BENCHMARKS.md) (run with `just bench-prove`).
 
 ## Architecture
 
@@ -217,7 +226,7 @@ Fresh-machine steps, in order. Everything below targets **Stellar testnet only**
 
 | Tool | Minimum | Tested |
 |---|---|---|
-| [Rust](https://rustup.rs/) + `wasm32v1-none` target | rustc **1.56.0** (edition 2021) | `rustc 1.92.0` |
+| [Rust](https://rustup.rs/) + `wasm32v1-none` target | rustc **1.94.1** (pinned in rust-toolchain.toml) | `rustc 1.94.1` |
 | [`stellar` CLI](https://developers.stellar.org/docs/tools/cli/install-cli) | **v21.0** (protocol 22 required for BLS12-381 host functions; protocol 23 for `soroban-sdk = "23"`) | `23.4.1` |
 | [Node.js](https://nodejs.org/) | **20.6.0** (`process.loadEnvFile`, used in `scripts/e2e.ts`) | `v24.11.1` |
 | [`circom`](https://docs.circom.io/getting-started/installation/) on `PATH` | **2.1.6** (pragma in `circuits/membership.template.circom`) | `2.2.3` (built from source) |
@@ -266,8 +275,7 @@ cd ..
 
 ```bash
 cd contracts
-cargo test                 # 8/8: happy path (real proof!), underfunded, double-claim, stale round tag,
-                             # tampered-proof rejection, CPU budget, both auth checks
+cargo test                 # runs all tests in contracts/sharibo/src/test/
 stellar contract build
 stellar contract deploy --wasm target/wasm32v1-none/release/sharibo.wasm --source admin --network testnet
 cd ..
@@ -310,7 +318,7 @@ Runs a full round against testnet for real: creates a 5-member circle, funds it 
 | `--reuse-circle <id>` | Skip circle creation; run against an existing circle |
 | `--verbose` | Echo each RPC/curl interaction for debugging |
 
-> Run `npm run e2e` in the foreground when debugging hangs — see [docs/canary.md](docs/canary.md). HTTP client choice is documented historically in [NOTES.md](NOTES.md) Phase 4.
+> This script shells out to `curl` for friendbot/Horizon calls rather than using `fetch()` — see `NOTES.md` if you're curious why. Run `npm run e2e` in the foreground when debugging hangs — see [docs/canary.md](docs/canary.md).
 
 ### 6. Browser demo
 
@@ -358,7 +366,7 @@ sharibo/
 └── knip.jsonc           dependency and dead code linting configuration
 ```
 
-Full annotated version (what each file does and why): [breakdown §16](full_product_breakdown.md#16-repository-structure). See also [docs/index.md](docs/index.md) for a complete documentation index.
+Full annotated version (what each file does and why): [breakdown §16](full_product_breakdown.md#16-repository-structure). See also [docs/index.md](docs/index.md) for a complete documentation index and the contributor-friendly [architecture guide](docs/architecture.md).
 
 ## Contributing
 
